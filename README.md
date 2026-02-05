@@ -130,7 +130,8 @@ npm run build
 
 ```bash
 # 启动 Go 服务（默认 :8080）
-# 默认 JSON 文件库: data/aigcpanel.json
+# 默认 JSON 文件库: go/data/aigcpanel.json（在 `go` 目录下运行时为 `data/aigcpanel.json`）
+cd go
 go run ./cmd/aigcpaneld
 ```
 
