@@ -77,6 +77,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/v1/app/templates/", s.handlePatchTemplate)
 	// 删除应用模板
 	mux.HandleFunc("DELETE /api/v1/app/templates/", s.handleDeleteTemplate)
+	// 解析本地模型 config.json
+	mux.HandleFunc("POST /api/v1/app/local-models/resolve", s.handleResolveLocalModelConfig)
 	return mux
 }
 
@@ -422,4 +424,24 @@ func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleResolveLocalModelConfig(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ConfigPath string `json:"configPath"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	out, err := s.svc.ResolveLocalModelConfig(in.ConfigPath)
+	if errors.Is(err, app.ErrBadRequest) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }

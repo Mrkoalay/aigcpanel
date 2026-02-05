@@ -1,9 +1,13 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"aigcpanel/go/internal/domain"
@@ -430,4 +434,68 @@ func (s *Service) DeleteAppTemplate(id string) error {
 		db.AppTemplates = append(db.AppTemplates[:i], db.AppTemplates[i+1:]...)
 		return nil
 	})
+}
+
+func (s *Service) ResolveLocalModelConfig(configPath string) (domain.LocalModelConfigInfo, error) {
+	if strings.TrimSpace(configPath) == "" {
+		return domain.LocalModelConfigInfo{}, ErrBadRequest
+	}
+	if filepath.Base(configPath) != "config.json" {
+		return domain.LocalModelConfigInfo{}, ErrBadRequest
+	}
+	buf, err := os.ReadFile(configPath)
+	if err != nil {
+		return domain.LocalModelConfigInfo{}, err
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(buf, &cfg); err != nil {
+		return domain.LocalModelConfigInfo{}, err
+	}
+	parent := filepath.Dir(configPath)
+	toString := func(v any) string {
+		if x, ok := v.(string); ok {
+			return x
+		}
+		return ""
+	}
+	functions := make([]string, 0)
+	if arr, ok := cfg["functions"].([]any); ok {
+		for _, item := range arr {
+			if str, ok := item.(string); ok {
+				functions = append(functions, str)
+			}
+		}
+	}
+	settings := make([]any, 0)
+	if arr, ok := cfg["settings"].([]any); ok {
+		settings = arr
+	}
+	setting := map[string]any{}
+	if m, ok := cfg["setting"].(map[string]any); ok {
+		setting = m
+	}
+	return domain.LocalModelConfigInfo{
+		Type:              "LOCAL_DIR",
+		Name:              toString(cfg["name"]),
+		Version:           toString(cfg["version"]),
+		ServerRequire:     firstNonEmpty(toString(cfg["serverRequire"]), "*"),
+		Title:             toString(cfg["title"]),
+		Description:       toString(cfg["description"]),
+		DeviceDescription: toString(cfg["deviceDescription"]),
+		Path:              parent,
+		PlatformName:      toString(cfg["platformName"]),
+		PlatformArch:      toString(cfg["platformArch"]),
+		Entry:             toString(cfg["entry"]),
+		Functions:         functions,
+		Settings:          settings,
+		Setting:           setting,
+		Config:            cfg,
+	}, nil
+}
+
+func firstNonEmpty(v string, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
 }

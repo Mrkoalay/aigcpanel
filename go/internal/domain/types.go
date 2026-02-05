@@ -104,3 +104,21 @@ type AppTemplate struct {
 	CreatedAt int64  `json:"createdAt"`
 	UpdatedAt int64  `json:"updatedAt"`
 }
+
+type LocalModelConfigInfo struct {
+	Type              string         `json:"type"`
+	Name              string         `json:"name"`
+	Version           string         `json:"version"`
+	ServerRequire     string         `json:"serverRequire"`
+	Title             string         `json:"title"`
+	Description       string         `json:"description"`
+	DeviceDescription string         `json:"deviceDescription"`
+	Path              string         `json:"path"`
+	PlatformName      string         `json:"platformName"`
+	PlatformArch      string         `json:"platformArch"`
+	Entry             string         `json:"entry"`
+	Functions         []string       `json:"functions"`
+	Settings          []any          `json:"settings"`
+	Setting           map[string]any `json:"setting"`
+	Config            map[string]any `json:"config"`
+}

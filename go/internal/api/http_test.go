@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -55,5 +56,29 @@ func TestPatchTaskNotFound(t *testing.T) {
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestResolveLocalModelConfig(t *testing.T) {
+	h := newTestServer(t)
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	content := `{"name":"demo","version":"1.0.0","title":"Demo","platformName":"linux","platformArch":"amd64","functions":["tts"]}`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]string{"configPath": configPath})
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/app/local-models/resolve", bytes.NewReader(body))
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", rr.Code, rr.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["name"] != "demo" {
+		t.Fatalf("expected name demo, got %v", out["name"])
 	}
 }
