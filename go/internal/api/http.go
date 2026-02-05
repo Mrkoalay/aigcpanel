@@ -16,37 +16,66 @@ func NewServer(svc *app.Service) *Server { return &Server{svc: svc} }
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+	// 健康检查
 	mux.HandleFunc("GET /health", s.handleHealth)
+	// 用户列表
 	mux.HandleFunc("GET /api/v1/users", s.handleListUsers)
+	// 创建用户
 	mux.HandleFunc("POST /api/v1/users", s.handleCreateUser)
+	// 模型服务列表
 	mux.HandleFunc("GET /api/v1/servers", s.handleListServers)
+	// 创建模型服务
 	mux.HandleFunc("POST /api/v1/servers", s.handleCreateServer)
+	// 更新模型服务状态
 	mux.HandleFunc("PATCH /api/v1/servers/", s.handlePatchServer)
+	// 声音档案列表
 	mux.HandleFunc("GET /api/v1/voice-profiles", s.handleListVoiceProfiles)
+	// 创建声音档案
 	mux.HandleFunc("POST /api/v1/voice-profiles", s.handleCreateVoiceProfile)
+	// 视频模板列表
 	mux.HandleFunc("GET /api/v1/video-templates", s.handleListVideoTemplates)
+	// 创建视频模板
 	mux.HandleFunc("POST /api/v1/video-templates", s.handleCreateVideoTemplate)
+	// 平台任务列表
 	mux.HandleFunc("GET /api/v1/tasks", s.handleListTasks)
+	// 创建平台任务
 	mux.HandleFunc("POST /api/v1/tasks", s.handleCreateTask)
+	// 更新平台任务状态
 	mux.HandleFunc("PATCH /api/v1/tasks/", s.handlePatchTask)
 
+	// 应用任务列表（支持 biz/type/status 过滤）
 	mux.HandleFunc("GET /api/v1/app/tasks", s.handleListAppTasks)
+	// 创建应用任务
 	mux.HandleFunc("POST /api/v1/app/tasks", s.handleCreateAppTask)
+	// 获取应用任务详情
 	mux.HandleFunc("GET /api/v1/app/tasks/", s.handleGetAppTask)
+	// 更新应用任务
 	mux.HandleFunc("PATCH /api/v1/app/tasks/", s.handlePatchAppTask)
+	// 删除应用任务
 	mux.HandleFunc("DELETE /api/v1/app/tasks/", s.handleDeleteAppTask)
 
+	// 应用存储列表（按 biz）
 	mux.HandleFunc("GET /api/v1/app/storages", s.handleListStorages)
+	// 创建应用存储记录
 	mux.HandleFunc("POST /api/v1/app/storages", s.handleCreateStorage)
+	// 获取应用存储记录
 	mux.HandleFunc("GET /api/v1/app/storages/", s.handleGetStorage)
+	// 更新应用存储记录
 	mux.HandleFunc("PATCH /api/v1/app/storages/", s.handlePatchStorage)
+	// 删除应用存储记录
 	mux.HandleFunc("DELETE /api/v1/app/storages/", s.handleDeleteStorage)
+	// 清空某业务应用存储
 	mux.HandleFunc("DELETE /api/v1/app/storages", s.handleClearStorage)
 
+	// 应用模板列表
 	mux.HandleFunc("GET /api/v1/app/templates", s.handleListTemplates)
+	// 创建应用模板
 	mux.HandleFunc("POST /api/v1/app/templates", s.handleCreateTemplate)
+	// 获取应用模板（ID 或 Name）
 	mux.HandleFunc("GET /api/v1/app/templates/", s.handleGetTemplate)
+	// 更新应用模板
 	mux.HandleFunc("PATCH /api/v1/app/templates/", s.handlePatchTemplate)
+	// 删除应用模板
 	mux.HandleFunc("DELETE /api/v1/app/templates/", s.handleDeleteTemplate)
 	return mux
 }
