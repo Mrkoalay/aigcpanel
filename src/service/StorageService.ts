@@ -1,3 +1,5 @@
+import {backend} from "./backend";
+
 export type StorageBiz = "SoundPrompt" | "LiveAvatar" | "LiveKnowledge" | "LiveEvent" | "LiveTalk";
 
 export type StorageRecord = {
@@ -14,11 +16,18 @@ export type StorageRecord = {
 
 export type StorageRuntime = {};
 
+type StorageApiRecord = {
+    id: number;
+    biz: StorageBiz;
+    sort: number;
+    title: string;
+    content: string;
+    createdAt: number;
+    updatedAt: number;
+};
+
 export const StorageService = {
-    tableName() {
-        return "data_storage";
-    },
-    decodeRecord(record: StorageRecord): StorageRecord | null {
+    decodeRecord(record: StorageApiRecord | null): StorageRecord | null {
         if (!record) {
             return null;
         }
@@ -27,76 +36,56 @@ export const StorageService = {
             content: JSON.parse(record.content ? record.content : "{}"),
         } as StorageRecord;
     },
-    encodeRecord(record: StorageRecord): StorageRecord {
-        if ("content" in record) {
-            record.content = JSON.stringify(record.content || {});
-        }
-        return record;
+    encodeRecord(record: StorageRecord): StorageApiRecord {
+        return {
+            id: Number(record.id || 0),
+            biz: record.biz,
+            sort: Number(record.sort || 0),
+            title: record.title || "",
+            content: JSON.stringify(record.content || {}),
+            createdAt: 0,
+            updatedAt: 0,
+        };
     },
     async getByTitle(biz: StorageBiz, title: string): Promise<StorageRecord | null> {
-        const record: any = await window.$mapi.db.first(
-            `SELECT *
-             FROM ${this.tableName()}
-             WHERE biz = ?
-               AND title = ?`,
-            [biz, title]
-        );
-        return this.decodeRecord(record);
+        const records = await this.list(biz);
+        return records.find(item => item.title === title) || null;
     },
     async get(id: number): Promise<StorageRecord | null> {
-        const record: any = await window.$mapi.db.first(
-            `SELECT *
-             FROM ${this.tableName()}
-             WHERE id = ?`,
-            [id]
-        );
+        const record = await backend.get<StorageApiRecord>(`/app/storages/${id}`);
         return this.decodeRecord(record);
     },
     async listByIds(ids: number[]): Promise<StorageRecord[]> {
         if (!ids || ids.length === 0) {
             return [];
         }
-        const records: StorageRecord[] = await window.$mapi.db.select(
-            `SELECT *
-             FROM ${this.tableName()}
-             WHERE id IN (${ids.join(",")})`,
-            []
-        );
-        return records.map(this.decodeRecord) as StorageRecord[];
+        const result: StorageRecord[] = [];
+        for (const id of ids) {
+            const record = await this.get(id);
+            if (record) {
+                result.push(record);
+            }
+        }
+        return result;
     },
     async list(biz: StorageBiz): Promise<StorageRecord[]> {
-        const records: StorageRecord[] = await window.$mapi.db.select(
-            `SELECT *
-             FROM ${this.tableName()}
-             WHERE biz = ?
-             ORDER BY id DESC`,
-            [biz]
-        );
-        return records.map(this.decodeRecord) as StorageRecord[];
+        const records = await backend.get<StorageApiRecord[]>(`/app/storages?biz=${encodeURIComponent(biz)}`);
+        return records.map(record => this.decodeRecord(record)!).sort((a, b) => (b.id || 0) - (a.id || 0));
     },
     async add(biz: StorageBiz, record: Partial<StorageRecord>) {
-        const fields = ["biz", "title", "sort", "content"];
         record["biz"] = biz;
-        record = this.encodeRecord(record as StorageRecord);
-        const values = fields.map(f => record[f]);
-        const valuesPlaceholder = fields.map(f => "?");
-        const id = await window.$mapi.db.insert(
-            `INSERT INTO ${this.tableName()} (${fields.join(",")})
-             VALUES (${valuesPlaceholder.join(",")})`,
-            values
-        );
+        const payload = this.encodeRecord(record as StorageRecord);
+        const created = await backend.post<StorageApiRecord>("/app/storages", payload);
+        return created.id;
     },
     async update(id: number, record: Partial<StorageRecord>) {
-        record = this.encodeRecord(record as StorageRecord);
-        const fields = Object.keys(record);
-        const values = fields.map(f => record[f]);
-        const set = fields.map(f => `${f} = ?`).join(",");
-        return await window.$mapi.db.execute(
-            `UPDATE ${this.tableName()}
-             SET ${set}
-             WHERE id = ?`,
-            [...values, id]
-        );
+        const payload: any = {};
+        if ("biz" in record) payload.biz = record.biz;
+        if ("sort" in record) payload.sort = record.sort;
+        if ("title" in record) payload.title = record.title;
+        if ("content" in record) payload.content = JSON.stringify(record.content || {});
+        await backend.patch(`/app/storages/${id}`, payload);
+        return 1;
     },
     async addOrUpdate(biz: StorageBiz, id: number, record: Partial<StorageRecord>) {
         if (!id) {
@@ -115,35 +104,19 @@ export const StorageService = {
         for (const file of filesForClean) {
             await window.$mapi.file.deletes(file);
         }
-        await window.$mapi.db.delete(
-            `DELETE
-             FROM ${this.tableName()}
-             WHERE id = ?`,
-            [record.id]
-        );
+        await backend.delete(`/app/storages/${record.id}`);
     },
     async clear(biz: StorageBiz) {
-        await window.$mapi.db.delete(
-            `DELETE
-             FROM ${this.tableName()}
-             WHERE biz = ?`,
-            [biz]
-        );
+        await backend.delete(`/app/storages?biz=${encodeURIComponent(biz)}`);
     },
     async count(biz: StorageBiz, startTime: number = 0, endTime: number = 0) {
-        let sql = `SELECT COUNT(*) as cnt
-                   FROM ${this.tableName()}
-                   WHERE biz = ?`;
-        let params: any[] = [biz];
-        if (startTime > 0) {
-            sql += ` AND createdAt >= ?`;
-            params.push(startTime);
-        }
-        if (endTime > 0) {
-            sql += ` AND createdAt <= ?`;
-            params.push(endTime);
-        }
-        const result = await window.$mapi.db.first(sql, params);
-        return result.cnt;
+        const records = await this.list(biz);
+        return records.filter(item => {
+            const createdAt = (item as any).createdAt || 0;
+            if (startTime > 0 && createdAt < startTime) {
+                return false;
+            }
+            return !(endTime > 0 && createdAt > endTime);
+        }).length;
     },
 };
