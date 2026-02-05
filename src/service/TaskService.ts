@@ -2,6 +2,7 @@ import {TimeUtil} from "../lib/util";
 import {TaskChangeType, useTaskStore} from "../store/modules/task";
 import {groupThrottle} from "../lib/groupThrottle";
 import {t} from "../lang";
+import {backend} from "./backend";
 
 const taskStore = useTaskStore();
 
@@ -57,8 +58,6 @@ export type TaskRuntime = {
     [key: string]: any;
 };
 
-// deep merge two object, newData has higher priority
-// if value is array, replace it directly
 const mergeData = (oldData: any, newData: any) => {
     if (typeof oldData !== "object" || oldData === null) {
         return newData;
@@ -92,16 +91,33 @@ type CleanerFunctionType = (record: TaskRecord) => Promise<{
     files: string[];
 }>;
 
+type TaskApiRecord = {
+    id: number;
+    biz: TaskBiz;
+    type: number;
+    title: string;
+    status: string;
+    statusMsg: string;
+    startTime: number;
+    endTime: number;
+    serverName: string;
+    serverTitle: string;
+    serverVersion: string;
+    param: string;
+    modelConfig: string;
+    jobResult: string;
+    result: string;
+    createdAt: number;
+    updatedAt: number;
+};
+
 const cleanersMap = new Map<TaskBiz, CleanerFunctionType>();
 
 export const TaskService = {
-    tableName() {
-        return "data_task";
-    },
     registerCleaner(biz: TaskBiz, cleaner: CleanerFunctionType) {
         cleanersMap.set(biz, cleaner);
     },
-    decodeRecord(record: TaskRecord): TaskRecord | null {
+    decodeRecord(record: TaskApiRecord): TaskRecord | null {
         if (!record) {
             return null;
         }
@@ -113,40 +129,29 @@ export const TaskService = {
             result: JSON.parse(record.result ? record.result : "{}"),
         } as TaskRecord;
     },
-    encodeRecord(record: TaskRecord): TaskRecord {
-        if ("param" in record) {
-            record.param = JSON.stringify(record.param || {});
+    encodeRecord(record: Partial<TaskRecord>): any {
+        const result: any = {...record};
+        if ("param" in result) {
+            result.param = JSON.stringify(result.param || {});
         }
-        if ("jobResult" in record) {
-            record.jobResult = JSON.stringify(record.jobResult || {});
+        if ("jobResult" in result) {
+            result.jobResult = JSON.stringify(result.jobResult || {});
         }
-        if ("modelConfig" in record) {
-            record.modelConfig = JSON.stringify(record.modelConfig || {});
+        if ("modelConfig" in result) {
+            result.modelConfig = JSON.stringify(result.modelConfig || {});
         }
-        if ("result" in record) {
-            record.result = JSON.stringify(record.result || {});
+        if ("result" in result) {
+            result.result = JSON.stringify(result.result || {});
         }
-        return record;
+        return result;
     },
     async get(id: number | string): Promise<TaskRecord | null> {
-        const record: any = await window.$mapi.db.first(
-            `SELECT *
-             FROM ${this.tableName()}
-             WHERE id = ?`,
-            [id]
-        );
+        const record = await backend.get<TaskApiRecord>(`/app/tasks/${id}`);
         return this.decodeRecord(record);
     },
     async list(biz: TaskBiz, type: TaskType = TaskType.User): Promise<TaskRecord[]> {
-        const records: TaskRecord[] = await window.$mapi.db.select(
-            `SELECT *
-             FROM ${this.tableName()}
-             WHERE biz = ?
-               AND type = ?
-             ORDER BY id DESC`,
-            [biz, type]
-        );
-        return records.map(this.decodeRecord) as TaskRecord[];
+        const records = await backend.get<TaskApiRecord[]>(`/app/tasks?biz=${encodeURIComponent(biz)}&type=${type}`);
+        return records.map(record => this.decodeRecord(record) as TaskRecord).sort((a, b) => (b.id || 0) - (a.id || 0));
     },
     async listByStatus(
         biz: TaskBiz,
@@ -155,26 +160,11 @@ export const TaskService = {
         if (!statusList || statusList.length === 0) {
             return [];
         }
-        const records: TaskRecord[] = await window.$mapi.db.select(
-            `SELECT *
-             FROM ${this.tableName()}
-             WHERE biz = ?
-               AND status IN (${statusList.map(() => "?").join(",")})
-             ORDER BY id DESC`,
-            [biz, ...statusList]
-        );
-        return records.map(this.decodeRecord) as TaskRecord[];
+        const records = await backend.get<TaskApiRecord[]>(`/app/tasks?biz=${encodeURIComponent(biz)}&status=${statusList.join(",")}`);
+        return records.map(record => this.decodeRecord(record) as TaskRecord).sort((a, b) => (b.id || 0) - (a.id || 0));
     },
     async restoreForTask(biz: TaskBiz) {
-        const records: TaskRecord[] = await window.$mapi.db.select(
-            `SELECT *
-             FROM ${this.tableName()}
-             WHERE biz = ?
-               AND (status = 'running' OR status = 'wait' OR status = 'queue')
-             ORDER BY id DESC`,
-            [biz]
-        );
-        // console.log('TaskService.restoreForTask', records.length)
+        const records = await this.listByStatus(biz, ["running", "wait", "queue"]);
         for (let record of records) {
             await taskStore.dispatch(
                 record.biz,
@@ -191,44 +181,23 @@ export const TaskService = {
     async submit(record: TaskRecord) {
         record.status = "queue";
         record.startTime = TimeUtil.timestampMS();
-        const fields = [
-            "biz",
-            "type",
-            "title",
-            "status",
-            "statusMsg",
-            "startTime",
-            "endTime",
-            "serverName",
-            "serverTitle",
-            "serverVersion",
-            "param",
-            "modelConfig",
-        ];
         if (!("type" in record)) {
             record.type = TaskType.User;
         }
-        record = this.encodeRecord(record);
-        const values = fields.map(f => record[f]);
-        const valuesPlaceholder = fields.map(f => "?");
-        const id = await window.$mapi.db.insert(
-            `INSERT INTO ${this.tableName()} (${fields.join(",")})
-             VALUES (${valuesPlaceholder.join(",")})`,
-            values
-        );
+        const payload = this.encodeRecord(record);
+        const created = await backend.post<TaskApiRecord>("/app/tasks", payload);
         await taskStore.dispatch(
             record.biz,
-            id,
+            created.id,
             {},
             {
                 queryInterval: 5 * 1000,
             }
         );
-        return id;
+        return created.id;
     },
     updatePercent: groupThrottle(async (id: string, percent: number) => {
-        // console.log('TaskService.updatePercent', {id, percent});
-        const {updates, biz} = await TaskService.update(id, {result: {percent}});
+        const {biz} = await TaskService.update(id, {result: {percent}});
         taskStore.fireChange({
             biz: biz!, bizId: id,
         }, 'change');
@@ -248,7 +217,7 @@ export const TaskService = {
             mergeResult?: boolean;
         }
     ) => {
-        const {updates, biz} = await TaskService.update(id, record, option);
+        const {biz} = await TaskService.update(id, record, option);
         taskStore.fireChange({biz: biz!, bizId: id}, fireChangeType);
     }, 1000, {
         trailing: true,
@@ -281,25 +250,15 @@ export const TaskService = {
                 }
             }
         }
-        record = this.encodeRecord(record as TaskRecord);
-        const fields = Object.keys(record);
-        const values = fields.map(f => record[f]);
-        const set = fields.map(f => `${f} = ?`).join(",");
-        const updates = await window.$mapi.db.execute(
-            `UPDATE ${this.tableName()}
-             SET ${set}
-             WHERE id = ?`,
-            [...values, id]
-        );
+        await backend.patch(`/app/tasks/${id}`, this.encodeRecord(record));
         return {
-            updates,
+            updates: 1,
             biz: recordOld ? recordOld.biz : null,
         }
     },
     async delete(record: TaskRecord) {
         const filesForClean: string[] = [];
         if (record.result) {
-            // collection files from result
             for (const k in record.result) {
                 if (record.result[k] && typeof record.result[k] === "string") {
                     if (await window.$mapi.file.isHubFile(record.result[k])) {
@@ -318,12 +277,7 @@ export const TaskService = {
         for (const file of filesForClean) {
             await window.$mapi.file.deletes(file);
         }
-        await window.$mapi.db.delete(
-            `DELETE
-             FROM ${this.tableName()}
-             WHERE id = ?`,
-            [record.id]
-        );
+        await backend.delete(`/app/tasks/${record.id}`);
     },
     async count(
         biz: TaskBiz | null,
@@ -331,28 +285,16 @@ export const TaskService = {
         endTime: number = 0,
         type: TaskType = TaskType.User
     ): Promise<number> {
-        let sql = `SELECT COUNT(*) as cnt
-                   FROM ${this.tableName()}`;
-        const params: any[] = [];
-        const wheres: string[] = [];
-        if (biz) {
-            wheres.push("biz = ?");
-            params.push(biz);
+        if (!biz) {
+            return 0;
         }
-        if (startTime > 0) {
-            wheres.push("createdAt >= ?");
-            params.push(startTime);
-        }
-        if (endTime > 0) {
-            wheres.push("createdAt <= ?");
-            params.push(endTime);
-        }
-        wheres.push("type = ?");
-        params.push(type);
-        if (wheres.length > 0) {
-            sql += " WHERE " + wheres.join(" AND ");
-        }
-        const result = await window.$mapi.db.first(sql, params);
-        return result.cnt;
+        const records = await this.list(biz, type);
+        return records.filter(item => {
+            const createdAt = (item as any).createdAt || 0;
+            if (startTime > 0 && createdAt < startTime) {
+                return false;
+            }
+            return !(endTime > 0 && createdAt > endTime);
+        }).length;
     },
 };
