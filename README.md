@@ -123,6 +123,33 @@ npm run dev
 npm run build
 ```
 
+
+## Go 重写版本（接口 + 入库）
+
+为支持“使用 Golang 重写项目接口与入库逻辑”，仓库已提供 Go 后端骨架：
+
+```bash
+# 启动 Go 服务（默认 :8080）
+# 默认 JSON 文件库: data/aigcpanel.json
+go run ./cmd/aigcpaneld
+```
+
+可配置环境变量：
+
+- `AIGCPANEL_ADDR`：监听地址（默认 `:8080`）
+- `AIGCPANEL_DSN`：数据库文件路径（默认 `data/aigcpanel.json`）
+
+当前已提供的接口（均为持久化入库逻辑）：
+
+- `GET /health`
+- `GET/POST /api/v1/users`
+- `GET/POST /api/v1/servers`
+- `PATCH /api/v1/servers/{id}`
+- `GET/POST /api/v1/tasks`
+- `PATCH /api/v1/tasks/{id}`
+
+该实现用于作为 Go 全量重写的主干：接口层、仓储层、文件入库（JSON）已打通，可在此基础上继续对接模型推理、任务编排、鉴权与文件管理。
+
 ## 贡献指南
 
 我们欢迎社区贡献！如果您想为 AIGCPanel 做出贡献，请：
