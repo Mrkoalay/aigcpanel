@@ -1,3 +1,5 @@
+import {backend} from "./backend";
+
 export type VideoTemplateRecord = {
     id?: number;
     name: string;
@@ -5,11 +7,17 @@ export type VideoTemplateRecord = {
     info: any;
 };
 
+type VideoTemplateApiRecord = {
+    id: number;
+    name: string;
+    video: string;
+    info: string;
+    createdAt: number;
+    updatedAt: number;
+};
+
 export const VideoTemplateService = {
-    tableName() {
-        return "data_video_template";
-    },
-    decodeRecord(record: VideoTemplateRecord): VideoTemplateRecord | null {
+    decodeRecord(record: VideoTemplateApiRecord): VideoTemplateRecord | null {
         if (!record) {
             return null;
         }
@@ -18,70 +26,40 @@ export const VideoTemplateService = {
             info: record.info ? JSON.parse(record.info) : {},
         } as VideoTemplateRecord;
     },
-    encodeRecord(record: VideoTemplateRecord): VideoTemplateRecord {
-        if ("info" in record) {
-            record.info = JSON.stringify(record.info || {});
-        }
-        return record;
+    encodeRecord(record: VideoTemplateRecord): any {
+        return {
+            ...record,
+            info: JSON.stringify(record.info || {}),
+        };
     },
     async get(id: number): Promise<VideoTemplateRecord | null> {
-        const record: any = await window.$mapi.db.first(
-            `SELECT *
-             FROM ${this.tableName()}
-             WHERE id = ?`,
-            [id]
-        );
+        const record = await backend.get<VideoTemplateApiRecord>(`/app/templates/${id}`);
         return this.decodeRecord(record);
     },
     async getByName(name: string): Promise<VideoTemplateRecord | null> {
-        const record: any = await window.$mapi.db.first(
-            `SELECT *
-             FROM ${this.tableName()}
-             WHERE name = ?`,
-            [name]
-        );
+        const record = await backend.get<VideoTemplateApiRecord>(`/app/templates/${encodeURIComponent(name)}`);
         return this.decodeRecord(record);
     },
     async list(): Promise<VideoTemplateRecord[]> {
-        const records: VideoTemplateRecord[] = await window.$mapi.db.select(`SELECT *
-                                                                             FROM ${this.tableName()}
-                                                                             ORDER BY id DESC`);
-        return records.map(this.decodeRecord) as VideoTemplateRecord[];
+        const records = await backend.get<VideoTemplateApiRecord[]>("/app/templates");
+        return records.map(record => this.decodeRecord(record) as VideoTemplateRecord).sort((a, b) => (b.id || 0) - (a.id || 0));
     },
     async insert(record: VideoTemplateRecord) {
-        record = this.encodeRecord(record);
-        const fields = Object.keys(record).join(", ");
-        const values = Object.values(record);
-        const valuePlaceholders = values.map(() => "?").join(", ");
-        return await window.$mapi.db.insert(
-            `INSERT INTO ${this.tableName()} (${fields})
-             VALUES (${valuePlaceholders})`,
-            values
-        );
+        const created = await backend.post<VideoTemplateApiRecord>("/app/templates", this.encodeRecord(record));
+        return created.id;
     },
     async delete(record: VideoTemplateRecord) {
         if (record.video) {
             await window.$mapi.file.hubDelete(record.video);
         }
-        await window.$mapi.db.delete(
-            `DELETE
-             FROM ${this.tableName()}
-             WHERE id = ?`,
-            [record.id]
-        );
+        await backend.delete(`/app/templates/${record.id}`);
     },
     async update(id: number, record: Partial<VideoTemplateRecord>) {
-        record = this.encodeRecord(record as VideoTemplateRecord);
-        const fields = Object.keys(record)
-            .map(key => `${key} = ?`)
-            .join(", ");
-        const values = Object.values(record);
-        values.push(id);
-        return await window.$mapi.db.update(
-            `UPDATE ${this.tableName()}
-             SET ${fields}
-             WHERE id = ?`,
-            values
-        );
+        const payload: any = {...record};
+        if ("info" in payload) {
+            payload.info = JSON.stringify(payload.info || {});
+        }
+        await backend.patch(`/app/templates/${id}`, payload);
+        return 1;
     },
 };
