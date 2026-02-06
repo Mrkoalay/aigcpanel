@@ -5,15 +5,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ServerAdd(ctx *gin.Context) {
+func ModelAdd(ctx *gin.Context) {
 	var req struct {
-		ConfigPath string `json:"configPath"`
+		ConfigPath string `json:"config_path"`
 	}
-	if err := ctx.ShouldBindJSON(req); err != nil {
+	if err := ctx.ShouldBindJSON(&req); err != nil {
 		Err(ctx, err)
 		return
 	}
-	out, err := service.Server.ServerAdd(req.ConfigPath)
+	out, err := service.Model.ModelAdd(req.ConfigPath)
 	if err != nil {
 		Err(ctx, err)
 		return

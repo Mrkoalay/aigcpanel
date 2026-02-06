@@ -40,7 +40,7 @@ var (
 	BindWxFirstError           = New("请先绑定微信", 10004)
 	BindCloneError             = New("该团长已绑定其他用户", 10005)
 	ProductNotFoundError       = New("获取商品信息异常", 10001)
-	//	BAIYING_PRODUCT_NOT_FOUND_ERROR = New("联盟商品信息不存在", 10002)
+	//	BAIYING_PRODUCT_NOT_FOUND_ERROR = NewLog("联盟商品信息不存在", 10002)
 
 	// 小程序
 	AppletGrantNotFoundError       = New("记录不存在", 406000)
@@ -67,7 +67,7 @@ func (h HTTPException) Error() string {
 	return h.Message
 }
 
-// New 返回一个新的错误
+// NewLog 返回一个新的错误
 func New(message string, codes ...int) *HTTPException {
 	code := E
 	if len(codes) > 0 {

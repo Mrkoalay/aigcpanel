@@ -5,8 +5,8 @@ import (
 )
 
 func init() {
-	group := router.Group("/server")
+	group := router.Group("/model")
 	{
-		group.POST("/add", api.ServerAdd)
+		group.POST("/add", api.ModelAdd)
 	}
 }
