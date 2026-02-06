@@ -17,6 +17,8 @@ func init() {
 		{
 			sound.POST("/tts", api.SoundTTSCreate)
 			sound.GET("/tts/:id", api.SoundTTSGet)
+			sound.POST("/generate", api.SoundGenerateCreate)
+			sound.GET("/generate/:id", api.SoundGenerateGet)
 		}
 	}
 }
