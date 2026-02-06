@@ -3,6 +3,7 @@ package api
 import (
 	"aigcpanel/go/internal/service"
 	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
 func ModelAdd(ctx *gin.Context) {
@@ -21,4 +22,65 @@ func ModelAdd(ctx *gin.Context) {
 	OK(ctx, gin.H{
 		"data": out,
 	})
+}
+func ModelList(ctx *gin.Context) {
+
+	out, err := service.Model.ModelList()
+	if err != nil {
+		Err(ctx, err)
+		return
+	}
+	OK(ctx, gin.H{
+		"data": out,
+	})
+}
+
+type UpdateModelSettingReq struct {
+	Name    string         `json:"name"`
+	Version string         `json:"version"`
+	Setting map[string]any `json:"setting"`
+}
+
+func ModelSetting(c *gin.Context) {
+
+	var req UpdateModelSettingReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": err.Error()})
+		return
+	}
+
+	err := service.Model.ModelUpdateSetting(req.Name, req.Version, req.Setting)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 1, "msg": err.Error()})
+		return
+	}
+
+	OK(c, gin.H{})
+}
+
+type deleteReq struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+func ModelDelete(c *gin.Context) {
+
+	var req deleteReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code": 400,
+			"msg":  "参数错误",
+		})
+		return
+	}
+
+	if err := service.Model.ModelDelete(req.Name, req.Version); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 1,
+			"msg":  err.Error(),
+		})
+		return
+	}
+
+	OK(c, gin.H{})
 }
