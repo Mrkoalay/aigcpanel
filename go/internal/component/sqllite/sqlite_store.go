@@ -9,30 +9,47 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	// ⭐ 关键：纯Go sqlite 驱动（无CGO）
+	_ "modernc.org/sqlite"
 )
 
 type SQLiteStore struct {
 	db *gorm.DB
 }
 
+var DB *SQLiteStore
+
 func Init() {
-
-	_, taskStoreErr := NewSQLiteStore(utils.SQLiteFile)
-	if taskStoreErr != nil {
-		log.Logger.Error(taskStoreErr.Error())
+	store, err := NewSQLiteStore(utils.SQLiteFile)
+	if err != nil {
+		log.Logger.Error(err.Error())
+		panic(err)
 	}
-
+	DB = store
 }
+func GetSession() *gorm.DB {
 
+	return DB.db
+}
 func NewSQLiteStore(dsn string) (*SQLiteStore, error) {
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+
+	// ⭐ 必须用 DriverName=sqlite
+	db, err := gorm.Open(sqlite.Dialector{
+		DriverName: "sqlite",
+		DSN:        dsn,
+	}, &gorm.Config{})
+
 	if err != nil {
 		return nil, err
 	}
+
 	store := &SQLiteStore{db: db}
+
 	if err := store.migrate(); err != nil {
 		return nil, err
 	}
+
 	return store, nil
 }
 
@@ -41,7 +58,7 @@ func (s *SQLiteStore) Close() error {
 }
 
 func (s *SQLiteStore) migrate() error {
-	return s.db.AutoMigrate(&appTaskModel{})
+	return s.db.AutoMigrate(&domain.DataTaskModel{})
 }
 
 type TaskFilters struct {
@@ -50,8 +67,9 @@ type TaskFilters struct {
 	Type   *int
 }
 
-func (s *SQLiteStore) CreateTask(task domain.AppTask) (domain.AppTask, error) {
+func (s *SQLiteStore) CreateTask(task domain.DataTaskModel) (domain.DataTaskModel, error) {
 	now := time.Now().UnixMilli()
+
 	if task.CreatedAt == 0 {
 		task.CreatedAt = now
 	}
@@ -61,133 +79,73 @@ func (s *SQLiteStore) CreateTask(task domain.AppTask) (domain.AppTask, error) {
 	if task.Type == 0 {
 		task.Type = 1
 	}
-	model := appTaskModelFromDomain(task)
-	if err := s.db.Create(&model).Error; err != nil {
-		return domain.AppTask{}, err
+
+	if err := s.db.Create(&task).Error; err != nil {
+		return domain.DataTaskModel{}, err
 	}
-	return model.toDomain(), nil
+
+	return task, nil
 }
 
-func (s *SQLiteStore) GetTask(id int64) (domain.AppTask, error) {
-	var model appTaskModel
+func (s *SQLiteStore) GetTask(id int64) (domain.DataTaskModel, error) {
+	var model domain.DataTaskModel
 	if err := s.db.First(&model, id).Error; err != nil {
-		return domain.AppTask{}, err
+		return domain.DataTaskModel{}, err
 	}
-	return model.toDomain(), nil
+	return model, nil
 }
 
-func (s *SQLiteStore) ListTasks(filters TaskFilters) ([]domain.AppTask, error) {
-	query := s.db.Model(&appTaskModel{})
+func (s *SQLiteStore) ListTasks(filters TaskFilters) ([]domain.DataTaskModel, error) {
+
+	query := s.db.Model(&domain.DataTaskModel{})
+
 	if filters.Biz != "" {
 		query = query.Where("biz = ?", filters.Biz)
 	}
+
 	if len(filters.Status) > 0 {
 		statuses := make([]string, 0, len(filters.Status))
 		for _, status := range filters.Status {
-			if status == "" {
-				continue
+			if status != "" {
+				statuses = append(statuses, status)
 			}
-			statuses = append(statuses, status)
 		}
 		if len(statuses) > 0 {
 			query = query.Where("status IN ?", statuses)
 		}
 	}
+
 	if filters.Type != nil {
 		query = query.Where("type = ?", *filters.Type)
 	}
-	var models []appTaskModel
+
+	var models []domain.DataTaskModel
 	if err := query.Order("id DESC").Find(&models).Error; err != nil {
 		return nil, err
 	}
-	tasks := make([]domain.AppTask, 0, len(models))
-	for _, model := range models {
-		tasks = append(tasks, model.toDomain())
-	}
-	return tasks, nil
+
+	return models, nil
 }
 
-func (s *SQLiteStore) UpdateTask(id int64, updates map[string]any) (domain.AppTask, error) {
+func (s *SQLiteStore) UpdateTask(id int64, updates map[string]any) (domain.DataTaskModel, error) {
+
 	if len(updates) == 0 {
 		return s.GetTask(id)
 	}
+
 	updates["updatedAt"] = time.Now().UnixMilli()
-	if err := s.db.Model(&appTaskModel{}).Where("id = ?", id).Updates(updates).Error; err != nil {
-		return domain.AppTask{}, err
+
+	if err := s.db.Model(&domain.DataTaskModel{}).
+		Where("id = ?", id).
+		Updates(updates).Error; err != nil {
+		return domain.DataTaskModel{}, err
 	}
+
 	return s.GetTask(id)
 }
 
 func (s *SQLiteStore) DeleteTask(id int64) error {
-	return s.db.Delete(&appTaskModel{}, id).Error
-}
-
-type appTaskModel struct {
-	ID            int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	CreatedAt     int64  `gorm:"column:createdAt;not null"`
-	UpdatedAt     int64  `gorm:"column:updatedAt;not null"`
-	Biz           string `gorm:"column:biz;index:idx_data_task_biz"`
-	Type          int    `gorm:"column:type;default:1;index:idx_data_task_type"`
-	Title         string `gorm:"column:title"`
-	Status        string `gorm:"column:status;index:idx_data_task_status"`
-	StatusMsg     string `gorm:"column:statusMsg"`
-	StartTime     int64  `gorm:"column:startTime"`
-	EndTime       int64  `gorm:"column:endTime"`
-	ServerName    string `gorm:"column:serverName"`
-	ServerTitle   string `gorm:"column:serverTitle"`
-	ServerVersion string `gorm:"column:serverVersion"`
-	Param         string `gorm:"column:param"`
-	JobResult     string `gorm:"column:jobResult"`
-	ModelConfig   string `gorm:"column:modelConfig"`
-	Result        string `gorm:"column:result"`
-}
-
-func (appTaskModel) TableName() string {
-	return "data_task"
-}
-
-func appTaskModelFromDomain(task domain.AppTask) appTaskModel {
-	return appTaskModel{
-		ID:            task.ID,
-		Biz:           task.Biz,
-		Type:          task.Type,
-		Title:         task.Title,
-		Status:        task.Status,
-		StatusMsg:     task.StatusMsg,
-		StartTime:     task.StartTime,
-		EndTime:       task.EndTime,
-		ServerName:    task.ServerName,
-		ServerTitle:   task.ServerTitle,
-		ServerVersion: task.ServerVersion,
-		Param:         task.Param,
-		JobResult:     task.JobResult,
-		ModelConfig:   task.ModelConfig,
-		Result:        task.Result,
-		CreatedAt:     task.CreatedAt,
-		UpdatedAt:     task.UpdatedAt,
-	}
-}
-
-func (m appTaskModel) toDomain() domain.AppTask {
-	return domain.AppTask{
-		ID:            m.ID,
-		Biz:           m.Biz,
-		Type:          m.Type,
-		Title:         m.Title,
-		Status:        m.Status,
-		StatusMsg:     m.StatusMsg,
-		StartTime:     m.StartTime,
-		EndTime:       m.EndTime,
-		ServerName:    m.ServerName,
-		ServerTitle:   m.ServerTitle,
-		ServerVersion: m.ServerVersion,
-		Param:         m.Param,
-		JobResult:     m.JobResult,
-		ModelConfig:   m.ModelConfig,
-		Result:        m.Result,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-	}
+	return s.db.Delete(&domain.DataTaskModel{}, id).Error
 }
 
 func IsRecordNotFound(err error) bool {

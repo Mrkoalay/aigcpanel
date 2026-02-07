@@ -61,29 +61,9 @@ type Database struct {
 	VoiceProfiles  []VoiceProfile  `json:"voiceProfiles"`
 	VideoTemplates []VideoTemplate `json:"videoTemplates"`
 	Tasks          []Task          `json:"tasks"`
-	AppTasks       []AppTask       `json:"appTasks"`
+	AppTasks       []DataTaskModel `json:"appTasks"`
 	Storages       []StorageRecord `json:"storages"`
 	AppTemplates   []AppTemplate   `json:"appTemplates"`
-}
-
-type AppTask struct {
-	ID            int64  `json:"id"`
-	Biz           string `json:"biz"`
-	Type          int    `json:"type"`
-	Title         string `json:"title"`
-	Status        string `json:"status"`
-	StatusMsg     string `json:"statusMsg"`
-	StartTime     int64  `json:"startTime"`
-	EndTime       int64  `json:"endTime"`
-	ServerName    string `json:"serverName"`
-	ServerTitle   string `json:"serverTitle"`
-	ServerVersion string `json:"serverVersion"`
-	Param         string `json:"param"`
-	ModelConfig   string `json:"modelConfig"`
-	JobResult     string `json:"jobResult"`
-	Result        string `json:"result"`
-	CreatedAt     int64  `json:"createdAt"`
-	UpdatedAt     int64  `json:"updatedAt"`
 }
 
 type StorageRecord struct {

@@ -4,7 +4,6 @@ import (
 	"aigcpanel/go/internal/component/errs"
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -68,7 +67,7 @@ func SoundTTSCreate(ctx *gin.Context) {
 		Err(ctx, err)
 		return
 	}
-	task := domain.AppTask{
+	task := domain.DataTaskModel{
 		Biz:           "SoundGenerate",
 		Title:         req.Text,
 		Status:        "queue",
@@ -143,7 +142,7 @@ func SoundGenerateCreate(ctx *gin.Context) {
 		return
 	}
 	now := time.Now().UnixMilli()
-	task := domain.AppTask{
+	task := domain.DataTaskModel{
 		Biz:           "SoundGenerate",
 		Title:         req.Text,
 		Status:        "queue",
@@ -165,7 +164,7 @@ func SoundGenerateCreate(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, created)
 }
 
-func SoundTTSGet(ctx *gin.Context) {
+/*func SoundTTSGet(ctx *gin.Context) {
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil {
 		Err(ctx, errs.ParamError)
@@ -192,3 +191,4 @@ func SoundGenerateGet(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK, task)
 }
+*/

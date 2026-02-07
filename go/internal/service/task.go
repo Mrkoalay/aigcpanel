@@ -2,47 +2,44 @@ package service
 
 import (
 	"aigcpanel/go/internal/component/sqllite"
-	"os"
-	"sync"
-
 	"aigcpanel/go/internal/domain"
+	"time"
 )
 
 type taskService struct{}
 
 var Task = new(taskService)
 
-var (
-	taskStoreOnce sync.Once
-	taskStore     *sqllite.SQLiteStore
-	taskStoreErr  error
-)
+func (s *taskService) CreateTask(task domain.DataTaskModel) (domain.DataTaskModel, error) {
+	now := time.Now().UnixMilli()
 
-func (s *taskService) store() (*sqllite.SQLiteStore, error) {
-	taskStoreOnce.Do(func() {
-		dsn := getenv("AIGCPANEL_SQLITE_DSN", "data/aigcpanel.db")
-		taskStore, taskStoreErr = sqllite.NewSQLiteStore(dsn)
-	})
-	return taskStore, taskStoreErr
-}
-
-func (s *taskService) CreateTask(task domain.AppTask) (domain.AppTask, error) {
-	st, err := s.store()
-	if err != nil {
-		return domain.AppTask{}, err
+	if task.CreatedAt == 0 {
+		task.CreatedAt = now
 	}
-	return st.CreateTask(task)
+	if task.UpdatedAt == 0 {
+		task.UpdatedAt = now
+	}
+	if task.Type == 0 {
+		task.Type = 1
+	}
+	session := sqllite.GetSession()
+	if err := session.Save(&task).Error; err != nil {
+		return domain.DataTaskModel{}, err
+	}
+
+	return task, nil
 }
 
-func (s *taskService) GetTask(id int64) (domain.AppTask, error) {
+/*
+func (s *taskService) GetTask(id int64) (domain.DataTaskModel, error) {
 	st, err := s.store()
 	if err != nil {
-		return domain.AppTask{}, err
+		return domain.DataTaskModel{}, err
 	}
 	return st.GetTask(id)
 }
 
-func (s *taskService) ListTasks(filters sqllite.TaskFilters) ([]domain.AppTask, error) {
+func (s *taskService) ListTasks(filters sqllite.TaskFilters) ([]domain.DataTaskModel, error) {
 	st, err := s.store()
 	if err != nil {
 		return nil, err
@@ -50,10 +47,10 @@ func (s *taskService) ListTasks(filters sqllite.TaskFilters) ([]domain.AppTask, 
 	return st.ListTasks(filters)
 }
 
-func (s *taskService) UpdateTask(id int64, updates map[string]any) (domain.AppTask, error) {
+func (s *taskService) UpdateTask(id int64, updates map[string]any) (domain.DataTaskModel, error) {
 	st, err := s.store()
 	if err != nil {
-		return domain.AppTask{}, err
+		return domain.DataTaskModel{}, err
 	}
 	return st.UpdateTask(id, updates)
 }
@@ -72,3 +69,4 @@ func getenv(key, def string) string {
 	}
 	return def
 }
+*/

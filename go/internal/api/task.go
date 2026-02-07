@@ -1,17 +1,5 @@
 package api
 
-import (
-	"aigcpanel/go/internal/component/errs"
-	"aigcpanel/go/internal/component/sqllite"
-	"net/http"
-	"strconv"
-	"strings"
-
-	"aigcpanel/go/internal/domain"
-	"aigcpanel/go/internal/service"
-	"github.com/gin-gonic/gin"
-)
-
 type taskPayload struct {
 	ID            int64  `json:"id"`
 	Biz           string `json:"biz"`
@@ -32,7 +20,7 @@ type taskPayload struct {
 	UpdatedAt     int64  `json:"updatedAt"`
 }
 
-func TaskList(ctx *gin.Context) {
+/*func TaskList(ctx *gin.Context) {
 	statusQuery := strings.TrimSpace(ctx.Query("status"))
 	var statusList []string
 	if statusQuery != "" {
@@ -88,7 +76,7 @@ func TaskCreate(ctx *gin.Context) {
 		Err(ctx, err)
 		return
 	}
-	task := domain.AppTask{
+	task := domain.DataTaskModel{
 		Biz:           payload.Biz,
 		Type:          payload.Type,
 		Title:         payload.Title,
@@ -145,7 +133,7 @@ func TaskDelete(ctx *gin.Context) {
 		return
 	}
 	ctx.Status(http.StatusNoContent)
-}
+}*/
 
 func normalizeTaskUpdates(updates map[string]any) map[string]any {
 	normalized := map[string]any{}
