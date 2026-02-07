@@ -1,6 +1,7 @@
 package api
 
 import (
+	"aigcpanel/go/internal/component/errs"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -8,19 +9,15 @@ import (
 	"time"
 
 	"aigcpanel/go/internal/domain"
-	"aigcpanel/go/internal/errs"
 	"aigcpanel/go/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
 type soundTTSRequest struct {
-	Text          string                 `json:"text"`
-	ServerName    string                 `json:"serverName"`
-	ServerTitle   string                 `json:"serverTitle"`
-	ServerVersion string                 `json:"serverVersion"`
-	TtsServerKey  string                 `json:"ttsServerKey"`
-	TtsParam      map[string]any         `json:"ttsParam"`
-	Extra         map[string]interface{} `json:"-"`
+	Text         string                 `json:"text"`
+	TtsServerKey string                 `json:"ttsServerKey"`
+	TtsParam     map[string]any         `json:"ttsParam"`
+	Extra        map[string]interface{} `json:"-"`
 }
 
 type soundGenerateRequest struct {
@@ -45,7 +42,7 @@ func SoundTTSCreate(ctx *gin.Context) {
 		Err(ctx, err)
 		return
 	}
-	if strings.TrimSpace(req.Text) == "" || strings.TrimSpace(req.ServerName) == "" {
+	if strings.TrimSpace(req.Text) == "" {
 		Err(ctx, errs.ParamError)
 		return
 	}
@@ -65,13 +62,19 @@ func SoundTTSCreate(ctx *gin.Context) {
 		Err(ctx, err)
 		return
 	}
+
+	model, err := service.Model.Get(req.TtsServerKey)
+	if err != nil {
+		Err(ctx, err)
+		return
+	}
 	task := domain.AppTask{
 		Biz:           "SoundGenerate",
 		Title:         req.Text,
 		Status:        "queue",
-		ServerName:    req.ServerName,
-		ServerTitle:   req.ServerTitle,
-		ServerVersion: req.ServerVersion,
+		ServerName:    model.Name,
+		ServerTitle:   model.Title,
+		ServerVersion: model.Version,
 		Param:         string(paramRaw),
 		ModelConfig:   string(modelConfigRaw),
 		JobResult:     "{}",

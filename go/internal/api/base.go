@@ -1,8 +1,8 @@
 package api
 
 import (
-	"aigcpanel/go/internal/ask"
-	"aigcpanel/go/internal/errs"
+	"aigcpanel/go/internal/component/ask"
+	"aigcpanel/go/internal/component/errs"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"reflect"
@@ -59,7 +59,7 @@ func OK(ctx *gin.Context, data ...interface{}) {
 }
 
 // Message ...
-func Message(ctx *gin.Context, message string, data ...interface{}) {
+func OKWithMessage(ctx *gin.Context, message string, data ...interface{}) {
 	ctx.JSON(http.StatusOK, ask.Message(message, data...))
 }
 

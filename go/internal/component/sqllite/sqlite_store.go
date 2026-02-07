@@ -1,6 +1,8 @@
-package store
+package sqllite
 
 import (
+	"aigcpanel/go/internal/component/log"
+	"aigcpanel/go/internal/utils"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -12,6 +14,15 @@ import (
 
 type SQLiteStore struct {
 	db *sql.DB
+}
+
+func Init() {
+
+	_, taskStoreErr := NewSQLiteStore(utils.SQLiteFile)
+	if taskStoreErr != nil {
+		log.Logger.Error(taskStoreErr.Error())
+	}
+
 }
 
 func NewSQLiteStore(dsn string) (*SQLiteStore, error) {

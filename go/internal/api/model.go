@@ -8,7 +8,7 @@ import (
 
 func ModelAdd(ctx *gin.Context) {
 	var req struct {
-		ConfigPath string `json:"config_path"`
+		ConfigPath string `json:"configPath"`
 	}
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		Err(ctx, err)

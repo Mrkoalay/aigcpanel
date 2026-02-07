@@ -1,11 +1,11 @@
 package service
 
 import (
+	"aigcpanel/go/internal/component/sqllite"
 	"os"
 	"sync"
 
 	"aigcpanel/go/internal/domain"
-	"aigcpanel/go/internal/store"
 )
 
 type taskService struct{}
@@ -14,14 +14,14 @@ var Task = new(taskService)
 
 var (
 	taskStoreOnce sync.Once
-	taskStore     *store.SQLiteStore
+	taskStore     *sqllite.SQLiteStore
 	taskStoreErr  error
 )
 
-func (s *taskService) store() (*store.SQLiteStore, error) {
+func (s *taskService) store() (*sqllite.SQLiteStore, error) {
 	taskStoreOnce.Do(func() {
 		dsn := getenv("AIGCPANEL_SQLITE_DSN", "data/aigcpanel.db")
-		taskStore, taskStoreErr = store.NewSQLiteStore(dsn)
+		taskStore, taskStoreErr = sqllite.NewSQLiteStore(dsn)
 	})
 	return taskStore, taskStoreErr
 }
@@ -42,7 +42,7 @@ func (s *taskService) GetTask(id int64) (domain.AppTask, error) {
 	return st.GetTask(id)
 }
 
-func (s *taskService) ListTasks(filters store.TaskFilters) ([]domain.AppTask, error) {
+func (s *taskService) ListTasks(filters sqllite.TaskFilters) ([]domain.AppTask, error) {
 	st, err := s.store()
 	if err != nil {
 		return nil, err

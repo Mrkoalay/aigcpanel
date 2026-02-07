@@ -1,16 +1,16 @@
 package service
 
 import (
+	"aigcpanel/go/internal/component/errs"
+	"aigcpanel/go/internal/component/log"
 	"aigcpanel/go/internal/domain"
-	"aigcpanel/go/internal/errs"
+	"aigcpanel/go/internal/utils"
 	"encoding/json"
 	"go.uber.org/zap"
 	"os"
 	"path/filepath"
 	"strings"
 )
-
-const registryFile = "data/models.json"
 
 type model struct{}
 
@@ -80,7 +80,7 @@ func firstNonEmpty(v string, fallback string) string {
 
 func (s *model) ModelAdd(configPath string) (domain.LocalModelConfigInfo, error) {
 
-	errs.Info("开始添加模型", zap.String("config", configPath))
+	log.Info("开始添加模型", zap.String("config", configPath))
 
 	if strings.TrimSpace(configPath) == "" {
 		return domain.LocalModelConfigInfo{}, errs.New("参数异常")
@@ -92,20 +92,20 @@ func (s *model) ModelAdd(configPath string) (domain.LocalModelConfigInfo, error)
 
 	buf, err := os.ReadFile(configPath)
 	if err != nil {
-		errs.Error("读取配置失败", zap.Error(err))
+		log.Error("读取配置失败", zap.Error(err))
 		return domain.LocalModelConfigInfo{}, err
 	}
 
 	var cfg map[string]any
 	if err := json.Unmarshal(buf, &cfg); err != nil {
-		errs.Error("json解析失败", zap.Error(err))
+		log.Error("json解析失败", zap.Error(err))
 		return domain.LocalModelConfigInfo{}, err
 	}
 
 	parent := filepath.Dir(configPath)
 	info := parseConfigToInfo(cfg, parent)
 
-	errs.Info("准备注册模型",
+	log.Info("准备注册模型",
 		zap.String("name", info.Name),
 		zap.String("version", info.Version),
 		zap.String("path", info.Path),
@@ -137,20 +137,20 @@ func (s *model) ModelList() ([]domain.LocalModelConfigInfo, error) {
 
 		buf, err := os.ReadFile(configPath)
 		if err != nil {
-			errs.Warn("模型配置丢失", zap.String("path", configPath))
+			log.Warn("模型配置丢失", zap.String("path", configPath))
 			continue
 		}
 
 		var cfg map[string]any
 		if err := json.Unmarshal(buf, &cfg); err != nil {
-			errs.Warn("模型配置损坏", zap.String("path", configPath))
+			log.Warn("模型配置损坏", zap.String("path", configPath))
 			continue
 		}
 
 		list = append(list, parseConfigToInfo(cfg, r.LocalPath))
 	}
 
-	errs.Info("返回模型列表", zap.Int("count", len(list)))
+	log.Info("返回模型列表", zap.Int("count", len(list)))
 
 	return list, nil
 }
@@ -159,7 +159,7 @@ func (s *model) ModelUpdateSetting(name, version string, newSetting map[string]a
 
 	key := name + "|" + version
 
-	errs.Info("更新模型设置",
+	log.Info("更新模型设置",
 		zap.String("key", key),
 		zap.Any("setting", newSetting),
 	)
@@ -187,7 +187,7 @@ func (s *model) ModelUpdateSetting(name, version string, newSetting map[string]a
 
 		for k := range newSetting {
 			if !validKeys[k] {
-				errs.Warn("非法设置字段",
+				log.Warn("非法设置字段",
 					zap.String("key", key),
 					zap.String("field", k),
 				)
@@ -206,22 +206,18 @@ func (s *model) ModelUpdateSetting(name, version string, newSetting map[string]a
 
 		reg.Records[i].Setting = r.Setting
 
-		errs.Info("模型设置更新成功", zap.String("key", key))
+		log.Info("模型设置更新成功", zap.String("key", key))
 		return saveRegistry(reg)
 	}
 
 	return errs.New("模型不存在")
 }
 
-////////////////////////////////////////////////////////////
-// ModelDelete
-////////////////////////////////////////////////////////////
-
 func (s *model) ModelDelete(name string, version string) error {
 
 	key := name + "|" + version
 
-	errs.Info("请求删除模型", zap.String("key", key))
+	log.Info("请求删除模型", zap.String("key", key))
 
 	reg, err := loadRegistry()
 	if err != nil {
@@ -238,7 +234,7 @@ func (s *model) ModelDelete(name string, version string) error {
 	}
 
 	if index == -1 {
-		errs.Warn("删除失败，模型不存在", zap.String("key", key))
+		log.Warn("删除失败，模型不存在", zap.String("key", key))
 		return errs.New("模型不存在")
 	}
 
@@ -247,12 +243,50 @@ func (s *model) ModelDelete(name string, version string) error {
 	// 从数组移除
 	reg.Records = append(reg.Records[:index], reg.Records[index+1:]...)
 
-	errs.Info("模型已从注册表移除",
+	log.Info("模型已从注册表移除",
 		zap.String("key", removed.Key),
 		zap.String("path", removed.LocalPath),
 	)
 
 	return saveRegistry(reg)
+}
+func (s *model) Get(modelKey string) (*domain.LocalModelConfigInfo, error) {
+	localModelConfigInfo := &domain.LocalModelConfigInfo{}
+	reg, err := loadRegistry()
+	if err != nil {
+		return localModelConfigInfo, err
+	}
+
+	index := -1
+
+	for i, r := range reg.Records {
+		if r.Key == modelKey {
+			index = i
+
+			break
+		}
+	}
+
+	if index == -1 {
+		log.Warn("模型不存在", zap.String("key", modelKey))
+		return localModelConfigInfo, errs.New("模型不存在")
+	}
+
+	record := reg.Records[index]
+	configPath := filepath.Join(record.LocalPath, "config.json")
+
+	buf, err := os.ReadFile(configPath)
+	if err != nil {
+		return localModelConfigInfo, errs.New("模型配置丢失")
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(buf, &cfg); err != nil {
+		return localModelConfigInfo, errs.New("模型配置损坏")
+
+	}
+	modelConfigInfo := parseConfigToInfo(cfg, record.LocalPath)
+
+	return &modelConfigInfo, nil
 }
 
 type ModelRecord struct {
@@ -279,11 +313,11 @@ type ModelRegistry struct {
 
 func loadRegistry() (*ModelRegistry, error) {
 
-	if _, err := os.Stat(registryFile); os.IsNotExist(err) {
+	if _, err := os.Stat(utils.RegistryFile); os.IsNotExist(err) {
 		return &ModelRegistry{Records: []ModelRecord{}}, nil
 	}
 
-	buf, err := os.ReadFile(registryFile)
+	buf, err := os.ReadFile(utils.RegistryFile)
 	if err != nil {
 		return nil, err
 	}
@@ -298,9 +332,9 @@ func loadRegistry() (*ModelRegistry, error) {
 
 func saveRegistry(reg *ModelRegistry) error {
 
-	os.MkdirAll(filepath.Dir(registryFile), 0755)
+	os.MkdirAll(filepath.Dir(utils.RegistryFile), 0755)
 
-	f, err := os.Create(registryFile)
+	f, err := os.Create(utils.RegistryFile)
 	if err != nil {
 		return err
 	}
@@ -325,7 +359,7 @@ func cleanInvalid(reg *ModelRegistry) {
 		if _, err := os.Stat(r.LocalPath); err == nil {
 			valid = append(valid, r)
 		} else {
-			errs.Warn("移除失效模型",
+			log.Warn("移除失效模型",
 				zap.String("key", r.Key),
 				zap.String("path", r.LocalPath),
 			)
@@ -356,11 +390,11 @@ func registerModel(info domain.LocalModelConfigInfo) error {
 		if r.Key == key {
 
 			if filepath.Clean(r.LocalPath) == path {
-				errs.Warn("重复注册模型", zap.String("key", key))
+				log.Warn("重复注册模型", zap.String("key", key))
 				return errs.New("模型已存在")
 			}
 
-			errs.Warn("模型路径更新",
+			log.Warn("模型路径更新",
 				zap.String("old", r.LocalPath),
 				zap.String("new", path),
 			)

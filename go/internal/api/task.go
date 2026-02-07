@@ -1,15 +1,15 @@
 package api
 
 import (
+	"aigcpanel/go/internal/component/errs"
+	"aigcpanel/go/internal/component/sqllite"
 	"database/sql"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"aigcpanel/go/internal/domain"
-	"aigcpanel/go/internal/errs"
 	"aigcpanel/go/internal/service"
-	"aigcpanel/go/internal/store"
 	"github.com/gin-gonic/gin"
 )
 
@@ -52,7 +52,7 @@ func TaskList(ctx *gin.Context) {
 		}
 		taskType = &value
 	}
-	filters := store.TaskFilters{
+	filters := sqllite.TaskFilters{
 		Biz:    strings.TrimSpace(ctx.Query("biz")),
 		Status: statusList,
 		Type:   taskType,
