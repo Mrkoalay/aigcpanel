@@ -3,7 +3,6 @@ package api
 import (
 	"aigcpanel/go/internal/component/errs"
 	"aigcpanel/go/internal/component/sqllite"
-	"database/sql"
 	"net/http"
 	"strconv"
 	"strings"
@@ -73,7 +72,7 @@ func TaskGet(ctx *gin.Context) {
 	}
 	task, err := service.Task.GetTask(id)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if sqllite.IsRecordNotFound(err) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "task not found"})
 			return
 		}

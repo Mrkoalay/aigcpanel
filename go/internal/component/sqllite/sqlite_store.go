@@ -2,18 +2,17 @@ package sqllite
 
 import (
 	"aigcpanel/go/internal/component/log"
+	"aigcpanel/go/internal/domain"
 	"aigcpanel/go/internal/utils"
-	"database/sql"
-	"fmt"
-	"strings"
+	"errors"
 	"time"
 
-	"aigcpanel/go/internal/domain"
-	_ "modernc.org/sqlite"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 type SQLiteStore struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 func Init() {
@@ -26,59 +25,23 @@ func Init() {
 }
 
 func NewSQLiteStore(dsn string) (*SQLiteStore, error) {
-	db, err := sql.Open("sqlite", dsn)
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
-		return nil, err
-	}
-	if err := db.Ping(); err != nil {
 		return nil, err
 	}
 	store := &SQLiteStore{db: db}
 	if err := store.migrate(); err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	return store, nil
 }
 
 func (s *SQLiteStore) Close() error {
-	if s == nil || s.db == nil {
-		return nil
-	}
-	return s.db.Close()
+	return nil
 }
 
 func (s *SQLiteStore) migrate() error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS data_task (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            createdAt INTEGER NOT NULL,
-            updatedAt INTEGER NOT NULL,
-            biz TEXT,
-            type INTEGER DEFAULT 1,
-            title TEXT,
-            status TEXT,
-            statusMsg TEXT,
-            startTime INTEGER,
-            endTime INTEGER,
-            serverName TEXT,
-            serverTitle TEXT,
-            serverVersion TEXT,
-            param TEXT,
-            jobResult TEXT,
-            modelConfig TEXT,
-            result TEXT
-        )`,
-		`CREATE INDEX IF NOT EXISTS idx_data_task_biz ON data_task(biz)`,
-		`CREATE INDEX IF NOT EXISTS idx_data_task_status ON data_task(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_data_task_type ON data_task(type)`,
-	}
-	for _, stmt := range statements {
-		if _, err := s.db.Exec(stmt); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.db.AutoMigrate(&appTaskModel{})
 }
 
 type TaskFilters struct {
@@ -98,201 +61,135 @@ func (s *SQLiteStore) CreateTask(task domain.AppTask) (domain.AppTask, error) {
 	if task.Type == 0 {
 		task.Type = 1
 	}
-	res, err := s.db.Exec(
-		`INSERT INTO data_task
-            (biz, type, title, status, statusMsg, startTime, endTime, serverName, serverTitle, serverVersion, param, jobResult, modelConfig, result, createdAt, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		task.Biz,
-		task.Type,
-		task.Title,
-		task.Status,
-		task.StatusMsg,
-		task.StartTime,
-		task.EndTime,
-		task.ServerName,
-		task.ServerTitle,
-		task.ServerVersion,
-		task.Param,
-		task.JobResult,
-		task.ModelConfig,
-		task.Result,
-		task.CreatedAt,
-		task.UpdatedAt,
-	)
-	if err != nil {
+	model := appTaskModelFromDomain(task)
+	if err := s.db.Create(&model).Error; err != nil {
 		return domain.AppTask{}, err
 	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return domain.AppTask{}, err
-	}
-	task.ID = id
-	return task, nil
+	return model.toDomain(), nil
 }
 
 func (s *SQLiteStore) GetTask(id int64) (domain.AppTask, error) {
-	var task domain.AppTask
-	row := s.db.QueryRow(
-		`SELECT id, biz, type, title, status, statusMsg, startTime, endTime, serverName, serverTitle, serverVersion, param, jobResult, modelConfig, result, createdAt, updatedAt
-         FROM data_task WHERE id = ?`,
-		id,
-	)
-	if err := row.Scan(
-		&task.ID,
-		&task.Biz,
-		&task.Type,
-		&task.Title,
-		&task.Status,
-		&task.StatusMsg,
-		&task.StartTime,
-		&task.EndTime,
-		&task.ServerName,
-		&task.ServerTitle,
-		&task.ServerVersion,
-		&task.Param,
-		&task.JobResult,
-		&task.ModelConfig,
-		&task.Result,
-		&task.CreatedAt,
-		&task.UpdatedAt,
-	); err != nil {
+	var model appTaskModel
+	if err := s.db.First(&model, id).Error; err != nil {
 		return domain.AppTask{}, err
 	}
-	return task, nil
+	return model.toDomain(), nil
 }
 
 func (s *SQLiteStore) ListTasks(filters TaskFilters) ([]domain.AppTask, error) {
-	query := `SELECT id, biz, type, title, status, statusMsg, startTime, endTime, serverName, serverTitle, serverVersion, param, jobResult, modelConfig, result, createdAt, updatedAt
-        FROM data_task`
-	where := make([]string, 0)
-	args := make([]interface{}, 0)
+	query := s.db.Model(&appTaskModel{})
 	if filters.Biz != "" {
-		where = append(where, "biz = ?")
-		args = append(args, filters.Biz)
+		query = query.Where("biz = ?", filters.Biz)
 	}
 	if len(filters.Status) > 0 {
-		placeholders := make([]string, 0, len(filters.Status))
-		for _, s := range filters.Status {
-			if s == "" {
+		statuses := make([]string, 0, len(filters.Status))
+		for _, status := range filters.Status {
+			if status == "" {
 				continue
 			}
-			placeholders = append(placeholders, "?")
-			args = append(args, s)
+			statuses = append(statuses, status)
 		}
-		if len(placeholders) > 0 {
-			where = append(where, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ",")))
+		if len(statuses) > 0 {
+			query = query.Where("status IN ?", statuses)
 		}
 	}
 	if filters.Type != nil {
-		where = append(where, "type = ?")
-		args = append(args, *filters.Type)
+		query = query.Where("type = ?", *filters.Type)
 	}
-	if len(where) > 0 {
-		query = query + " WHERE " + strings.Join(where, " AND ")
-	}
-	query = query + " ORDER BY id DESC"
-
-	rows, err := s.db.Query(query, args...)
-	if err != nil {
+	var models []appTaskModel
+	if err := query.Order("id DESC").Find(&models).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	tasks := make([]domain.AppTask, 0)
-	for rows.Next() {
-		var task domain.AppTask
-		if err := rows.Scan(
-			&task.ID,
-			&task.Biz,
-			&task.Type,
-			&task.Title,
-			&task.Status,
-			&task.StatusMsg,
-			&task.StartTime,
-			&task.EndTime,
-			&task.ServerName,
-			&task.ServerTitle,
-			&task.ServerVersion,
-			&task.Param,
-			&task.JobResult,
-			&task.ModelConfig,
-			&task.Result,
-			&task.CreatedAt,
-			&task.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		tasks = append(tasks, task)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	tasks := make([]domain.AppTask, 0, len(models))
+	for _, model := range models {
+		tasks = append(tasks, model.toDomain())
 	}
 	return tasks, nil
 }
 
 func (s *SQLiteStore) UpdateTask(id int64, updates map[string]any) (domain.AppTask, error) {
-	sets := make([]string, 0)
-	args := make([]interface{}, 0)
-	addField := func(name string, value interface{}) {
-		sets = append(sets, fmt.Sprintf("%s = ?", name))
-		args = append(args, value)
-	}
-	if v, ok := updates["biz"]; ok {
-		addField("biz", v)
-	}
-	if v, ok := updates["type"]; ok {
-		addField("type", v)
-	}
-	if v, ok := updates["title"]; ok {
-		addField("title", v)
-	}
-	if v, ok := updates["status"]; ok {
-		addField("status", v)
-	}
-	if v, ok := updates["statusMsg"]; ok {
-		addField("statusMsg", v)
-	}
-	if v, ok := updates["startTime"]; ok {
-		addField("startTime", v)
-	}
-	if v, ok := updates["endTime"]; ok {
-		addField("endTime", v)
-	}
-	if v, ok := updates["serverName"]; ok {
-		addField("serverName", v)
-	}
-	if v, ok := updates["serverTitle"]; ok {
-		addField("serverTitle", v)
-	}
-	if v, ok := updates["serverVersion"]; ok {
-		addField("serverVersion", v)
-	}
-	if v, ok := updates["param"]; ok {
-		addField("param", v)
-	}
-	if v, ok := updates["jobResult"]; ok {
-		addField("jobResult", v)
-	}
-	if v, ok := updates["modelConfig"]; ok {
-		addField("modelConfig", v)
-	}
-	if v, ok := updates["result"]; ok {
-		addField("result", v)
-	}
-	if len(sets) == 0 {
+	if len(updates) == 0 {
 		return s.GetTask(id)
 	}
-	addField("updatedAt", time.Now().UnixMilli())
-	args = append(args, id)
-
-	query := fmt.Sprintf("UPDATE data_task SET %s WHERE id = ?", strings.Join(sets, ", "))
-	if _, err := s.db.Exec(query, args...); err != nil {
+	updates["updatedAt"] = time.Now().UnixMilli()
+	if err := s.db.Model(&appTaskModel{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return domain.AppTask{}, err
 	}
 	return s.GetTask(id)
 }
 
 func (s *SQLiteStore) DeleteTask(id int64) error {
-	_, err := s.db.Exec("DELETE FROM data_task WHERE id = ?", id)
-	return err
+	return s.db.Delete(&appTaskModel{}, id).Error
+}
+
+type appTaskModel struct {
+	ID            int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	CreatedAt     int64  `gorm:"column:createdAt;not null"`
+	UpdatedAt     int64  `gorm:"column:updatedAt;not null"`
+	Biz           string `gorm:"column:biz;index:idx_data_task_biz"`
+	Type          int    `gorm:"column:type;default:1;index:idx_data_task_type"`
+	Title         string `gorm:"column:title"`
+	Status        string `gorm:"column:status;index:idx_data_task_status"`
+	StatusMsg     string `gorm:"column:statusMsg"`
+	StartTime     int64  `gorm:"column:startTime"`
+	EndTime       int64  `gorm:"column:endTime"`
+	ServerName    string `gorm:"column:serverName"`
+	ServerTitle   string `gorm:"column:serverTitle"`
+	ServerVersion string `gorm:"column:serverVersion"`
+	Param         string `gorm:"column:param"`
+	JobResult     string `gorm:"column:jobResult"`
+	ModelConfig   string `gorm:"column:modelConfig"`
+	Result        string `gorm:"column:result"`
+}
+
+func (appTaskModel) TableName() string {
+	return "data_task"
+}
+
+func appTaskModelFromDomain(task domain.AppTask) appTaskModel {
+	return appTaskModel{
+		ID:            task.ID,
+		Biz:           task.Biz,
+		Type:          task.Type,
+		Title:         task.Title,
+		Status:        task.Status,
+		StatusMsg:     task.StatusMsg,
+		StartTime:     task.StartTime,
+		EndTime:       task.EndTime,
+		ServerName:    task.ServerName,
+		ServerTitle:   task.ServerTitle,
+		ServerVersion: task.ServerVersion,
+		Param:         task.Param,
+		JobResult:     task.JobResult,
+		ModelConfig:   task.ModelConfig,
+		Result:        task.Result,
+		CreatedAt:     task.CreatedAt,
+		UpdatedAt:     task.UpdatedAt,
+	}
+}
+
+func (m appTaskModel) toDomain() domain.AppTask {
+	return domain.AppTask{
+		ID:            m.ID,
+		Biz:           m.Biz,
+		Type:          m.Type,
+		Title:         m.Title,
+		Status:        m.Status,
+		StatusMsg:     m.StatusMsg,
+		StartTime:     m.StartTime,
+		EndTime:       m.EndTime,
+		ServerName:    m.ServerName,
+		ServerTitle:   m.ServerTitle,
+		ServerVersion: m.ServerVersion,
+		Param:         m.Param,
+		JobResult:     m.JobResult,
+		ModelConfig:   m.ModelConfig,
+		Result:        m.Result,
+		CreatedAt:     m.CreatedAt,
+		UpdatedAt:     m.UpdatedAt,
+	}
+}
+
+func IsRecordNotFound(err error) bool {
+	return errors.Is(err, gorm.ErrRecordNotFound)
 }

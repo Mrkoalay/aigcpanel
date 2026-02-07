@@ -6,7 +6,8 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	go.uber.org/zap v1.26.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	modernc.org/sqlite v1.27.0
+	gorm.io/driver/sqlite v1.5.5
+	gorm.io/gorm v1.25.10
 )
 
 require (
