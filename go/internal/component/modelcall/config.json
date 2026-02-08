@@ -1,0 +1,92 @@
+{
+    "$schema": "http://aigcpanel.demo.soft.host/sdk/server-config.schema.json?cacheid=5",
+    "name": "server-cosyvoice2-0.5b",
+    "cloudName": "CloudCosyVoice205b",
+    "version": "1.0.0",
+    "title": "CosyVoice-2.0-0.5B模型",
+    "description": "基于CosyVoice2.0-0.5B的模型，支持声音克隆（指令控制）功能",
+    "serverRequire": ">=0.13.0",
+    "deviceDescription": "GPU 8G+，内存 16G+",
+    "mode": {
+        "type": "watch",
+        "watchDelay": 60
+    },
+    "platformName": "win",
+    "platformArch": "x86",
+    "entry": "__EasyServer__",
+    "easyServer": {
+        "entry": "launcher",
+        "entryArgs": [],
+        "envs": [],
+        "content": "",
+        "functions": {
+            "soundClone": {
+                "content": "<p><b>模型克隆</b> 请使用5-20s的音频，太长的音频会导致克隆变慢。</p>",
+                "param": [
+                    {
+                        "name": "speed",
+                        "type": "slider",
+                        "title": "语速",
+                        "defaultValue": 1.0,
+                        "min": 0.5,
+                        "max": 2.0,
+                        "step": 0.1,
+                        "sliderMarks": {
+                            "0.5": "慢",
+                            "1": "正常",
+                            "2": "快"
+                        },
+                        "placeholder": "",
+                        "tips": ""
+                    },
+                    {
+                        "name": "crossLingual",
+                        "type": "switch",
+                        "title": "跨语种复刻",
+                        "defaultValue": false,
+                        "placeholder": "请输入语速",
+                        "tips": "跨语种克隆时需要特殊处理，因此需要标记是否为跨语种克隆"
+                    },
+                    {
+                        "name": "seed",
+                        "type": "inputNumber",
+                        "title": "随机种子",
+                        "defaultValue": 0,
+                        "min": 0,
+                        "max": 1000000,
+                        "opt": [
+                            "randomValue",
+                            "seed"
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    "launcher": {
+        "entry": ".\\_aienv\\python.exe",
+        "entryArgs": [
+            "-u",
+            "-m",
+            "aigcpanelrun",
+            "${CONFIG}"
+        ],
+        "envs": [
+            "AAA=111",
+            "BBB=222"
+        ]
+    },
+    "functions": [
+        "soundClone"
+    ],
+    "settings": [
+        {
+            "name": "gpu",
+            "type": "gpuSelector",
+            "title": "GPU",
+            "defaultValue": "",
+            "placeholder": "填写GPU序号 0 或 1"
+        }
+    ],
+    "buildTime": "2025-09-26 10:33:46"
+}

@@ -1,4 +1,4 @@
-module aigcpanel/go
+module xiacutai-server
 
 go 1.20
 

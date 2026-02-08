@@ -1,0 +1,19 @@
+{
+  "id":"VideoGenFlow_12",
+  "mode":"local",
+  "modelConfig":{
+    "type":"soundClone",
+    "param":{
+      "speed":1.1,
+      "_speed":"语速",
+      "crossLingual":false,
+      "_crossLingual":"跨语种复刻",
+      "seed":891236,
+      "_seed":"随机种子"
+    },
+    "text":"PC的气动力枪支查询系统：这个我看了下展示的信息跟我们现在的APP的枪支库基本一致，这个可以算整进来了\n弹药智查：这个页面要搞下，识别结果，还有弹药库的内容\n嫌疑人库：这个页面要搞下，搜索结果，要有人物基本信息，涉案信息，人物关系网",
+    "promptAudio":"C:\\Users\\kaola\\AppData\\Roaming\\aigcpanel\\data\\hub\\file\\20260121\\2048_17_CPOJKbqGLmy7oIPUGSi6pCQes9aAfYqq.wav",
+    "promptText":"然后用卷发棒，我教大家卷头发好不好？往那个弯一点。对，就是弯下面嗯，啊你这个也是三年前的，对不对？嗯，真的。对，就这样子卷卷这个底卷这个下半部分千万不要卷这个地方，这个地方卷卷那个头头就成了包菜头了。"
+  },
+  "setting":{}
+}
