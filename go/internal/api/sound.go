@@ -1,14 +1,14 @@
 package api
 
 import (
-	"aigcpanel/go/internal/component/errs"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
+	"xiacutai-server/internal/component/errs"
+	"xiacutai-server/internal/domain"
+	"xiacutai-server/internal/service"
 
-	"aigcpanel/go/internal/domain"
-	"aigcpanel/go/internal/service"
 	"github.com/gin-gonic/gin"
 )
 

@@ -1,9 +1,9 @@
 package api
 
 import (
-	"aigcpanel/go/internal/service"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"xiacutai-server/internal/service"
 )
 
 func ModelAdd(ctx *gin.Context) {

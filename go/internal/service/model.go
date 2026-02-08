@@ -1,15 +1,15 @@
 package service
 
 import (
-	"aigcpanel/go/internal/component/errs"
-	"aigcpanel/go/internal/component/log"
-	"aigcpanel/go/internal/domain"
-	"aigcpanel/go/internal/utils"
 	"encoding/json"
 	"go.uber.org/zap"
 	"os"
 	"path/filepath"
 	"strings"
+	"xiacutai-server/internal/component/errs"
+	"xiacutai-server/internal/component/log"
+	"xiacutai-server/internal/domain"
+	"xiacutai-server/internal/utils"
 )
 
 type model struct{}

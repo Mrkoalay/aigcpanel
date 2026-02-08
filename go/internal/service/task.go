@@ -1,9 +1,9 @@
 package service
 
 import (
-	"aigcpanel/go/internal/component/sqllite"
-	"aigcpanel/go/internal/domain"
 	"time"
+	"xiacutai-server/internal/component/sqllite"
+	"xiacutai-server/internal/domain"
 )
 
 type taskService struct{}

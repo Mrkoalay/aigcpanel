@@ -1,7 +1,7 @@
 package router
 
 import (
-	"aigcpanel/go/internal/api"
+	"xiacutai-server/internal/api"
 )
 
 func init() {

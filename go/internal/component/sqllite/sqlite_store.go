@@ -1,11 +1,11 @@
 package sqllite
 
 import (
-	"aigcpanel/go/internal/component/log"
-	"aigcpanel/go/internal/domain"
-	"aigcpanel/go/internal/utils"
 	"errors"
 	"time"
+	"xiacutai-server/internal/component/log"
+	"xiacutai-server/internal/domain"
+	"xiacutai-server/internal/utils"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

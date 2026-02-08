@@ -1,6 +1,6 @@
 package router
 
-import "aigcpanel/go/internal/api"
+import "xiacutai-server/internal/api"
 
 func init() {
 	group := router.Group("/sound/tts")

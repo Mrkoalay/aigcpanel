@@ -1,8 +1,8 @@
 package main
 
 import (
-	"aigcpanel/go/internal/component/sqllite"
-	"aigcpanel/go/internal/router"
+	"xiacutai-server/internal/component/sqllite"
+	"xiacutai-server/internal/router"
 )
 
 func main() {

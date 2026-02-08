@@ -1,12 +1,12 @@
 package api
 
 import (
-	"aigcpanel/go/internal/component/ask"
-	"aigcpanel/go/internal/component/errs"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"reflect"
 	"strings"
+	"xiacutai-server/internal/component/ask"
+	"xiacutai-server/internal/component/errs"
 )
 
 // Err 错误处理

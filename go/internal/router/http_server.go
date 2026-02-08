@@ -1,17 +1,17 @@
 package router
 
 import (
-	log2 "aigcpanel/go/internal/component/log"
-	"aigcpanel/go/internal/component/middleware"
 	"context"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"log"
+	"xiacutai-server/internal/component/log"
+
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+	"xiacutai-server/internal/component/middleware"
 )
 
 var router = gin.Default()
@@ -35,7 +35,7 @@ func Run() {
 	go func() {
 		// service connections
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %s\n", err)
+			log.Error("listen:", zap.Error(err))
 		}
 	}()
 
@@ -47,19 +47,19 @@ func Run() {
 	// kill -9 is syscall. SIGKILL but can"t be catch, so don't need add it
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log2.Info("Shutdown Server ...")
+	log.Info("Shutdown Server ...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log2.Error("Server Shutdown:", zap.Error(err))
+		log.Error("Server Shutdown:", zap.Error(err))
 	}
 	// catching ctx.Done(). timeout of 5 seconds.
 	select {
 	case <-ctx.Done():
-		log2.Info("timeout of 5 seconds.")
+		log.Info("timeout of 5 seconds.")
 	}
-	log2.Info("Server exiting")
+	log.Info("Server exiting")
 }
 
 func getenv(k, def string) string {
