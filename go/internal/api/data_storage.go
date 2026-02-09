@@ -1,31 +1,31 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
 	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/domain"
 	"xiacutai-server/internal/service"
+	"xiacutai-server/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 type storageCreateRequest struct {
-	ID        int64  `json:"id"`
-	Biz       string `json:"biz"`
-	Sort      int64  `json:"sort"`
-	Title     string `json:"title"`
-	Content   string `json:"content"`
-	CreatedAt int64  `json:"createdAt"`
-	UpdatedAt int64  `json:"updatedAt"`
+	Title      string `json:"title"`
+	FilePath   string `json:"filePath"`
+	PromptText string `json:"promptText"`
 }
-
+type storageListRequest struct {
+	Biz  string `form:"biz"`
+	Page int    `form:"page"`
+	Size int    `form:"size"`
+}
 type storageUpdateRequest struct {
-	Biz     *string `json:"biz"`
-	Sort    *int64  `json:"sort"`
-	Title   *string `json:"title"`
-	Content *string `json:"content"`
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
 }
 
 func DataStorageGet(ctx *gin.Context) {
@@ -43,84 +43,113 @@ func DataStorageGet(ctx *gin.Context) {
 }
 
 func DataStorageList(ctx *gin.Context) {
-	biz := strings.TrimSpace(ctx.Query("biz"))
-	list, err := service.DataStorage.ListStorages(biz)
+	var req storageListRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		Err(ctx, err)
+		return
+	}
+	list, err := service.DataStorage.ListStorages(service.StorageFilters{
+		Biz:  req.Biz,
+		Page: req.Page,
+		Size: req.Size,
+	})
 	if err != nil {
 		Err(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, list)
+	OK(ctx, gin.H{
+		"data": list,
+	})
 }
 
-func DataStorageCreate(ctx *gin.Context) {
+func DataStorageSoundCreate(ctx *gin.Context) {
 	var req storageCreateRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		Err(ctx, err)
 		return
 	}
-	if strings.TrimSpace(req.Biz) == "" {
-		Err(ctx, errs.ParamError)
+	// 复制文件并且重命名
+	// 复制文件到 storage
+	newPath, err := utils.CopyToStorage(req.FilePath)
+	if err != nil {
+		Err(ctx, err)
 		return
 	}
+	contentMap := map[string]any{
+		"url":        newPath,
+		"promptText": req.PromptText,
+	}
+
+	contentRaw, err := json.Marshal(contentMap)
 	record := domain.DataStorageModel{
-		Biz:       req.Biz,
-		Sort:      req.Sort,
-		Title:     req.Title,
-		Content:   req.Content,
-		CreatedAt: req.CreatedAt,
-		UpdatedAt: req.UpdatedAt,
+		Biz:     "SoundPrompt",
+		Title:   req.Title,
+		Content: string(contentRaw),
 	}
 	created, err := service.DataStorage.CreateStorage(record)
 	if err != nil {
 		Err(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, created)
+	OK(ctx, gin.H{
+		"data": created,
+	})
 }
 
 func DataStorageUpdate(ctx *gin.Context) {
-	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
-		return
-	}
 	var req storageUpdateRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		Err(ctx, err)
 		return
 	}
-	updates := map[string]any{}
-	if req.Biz != nil {
-		updates["biz"] = strings.TrimSpace(*req.Biz)
+	if req.ID <= 0 {
+		Err(ctx, errs.ParamError)
+		return
 	}
-	if req.Sort != nil {
-		updates["sort"] = *req.Sort
+
+	title := req.Title
+	updateMap := map[string]any{
+		"title": title,
 	}
-	if req.Title != nil {
-		updates["title"] = *req.Title
-	}
-	if req.Content != nil {
-		updates["content"] = *req.Content
-	}
-	record, err := service.DataStorage.UpdateStorage(id, updates)
+	task, err := service.DataStorage.UpdateStorage(req.ID, updateMap)
+
 	if err != nil {
 		Err(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, record)
+
+	OK(ctx, gin.H{
+		"data": task,
+	})
 }
 
 func DataStorageDelete(ctx *gin.Context) {
-	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
-		return
-	}
-	if err := service.DataStorage.DeleteStorage(id); err != nil {
+	var req taskOperateRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
 		Err(ctx, err)
 		return
 	}
-	ctx.Status(http.StatusNoContent)
+	if req.ID <= 0 {
+		Err(ctx, errs.ParamError)
+		return
+	}
+	current, err := service.DataTask.GetTask(req.ID)
+	if current.Status == domain.TaskStatusRunning {
+		Err(ctx, errs.New("不可删除运行中任务"))
+		return
+	}
+	if err != nil {
+		Err(ctx, err)
+		return
+	}
+
+	if err := service.DataStorage.DeleteStorage(req.ID); err != nil {
+		Err(ctx, err)
+		return
+	}
+	OK(ctx, gin.H{
+		"data": req.ID,
+	})
 }
 
 func DataStorageClear(ctx *gin.Context) {

@@ -1,6 +1,7 @@
 package utils
 
-var DATA_DIR = GetEnv("DATA_DIR", "data/")
+var DataDir = GetEnv("DataDir", "data/")
 
-var RegistryFile = DATA_DIR + "/models.json"
-var SQLiteFile = DATA_DIR + "/xiacutai.db"
+var RegistryFile = DataDir + "/models.json"
+var SQLiteFile = DataDir + "/xiacutai.db"
+var StorageDir = DataDir + "/storage/"

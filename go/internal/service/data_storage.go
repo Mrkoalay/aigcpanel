@@ -35,11 +35,22 @@ func (s *storageService) GetStorage(id int64) (domain.DataStorageModel, error) {
 	return model, nil
 }
 
-func (s *storageService) ListStorages(biz string) ([]domain.DataStorageModel, error) {
+type StorageFilters struct {
+	Biz  string
+	Page int `form:"page"`
+	Size int `form:"size"`
+}
+
+func (s *storageService) ListStorages(req StorageFilters) ([]domain.DataStorageModel, error) {
 	session := sqllite.GetSession()
 	query := session.Model(&domain.DataStorageModel{})
-	if biz != "" {
-		query = query.Where("biz = ?", biz)
+	if req.Biz != "" {
+		query = query.Where("biz = ?", req.Biz)
+	}
+	if req.Page > 0 {
+		limit := req.Size
+		offset := (req.Page - 1) * req.Size
+		query = query.Limit(limit).Offset(offset)
 	}
 	var models []domain.DataStorageModel
 	if err := query.Order("id DESC").Find(&models).Error; err != nil {

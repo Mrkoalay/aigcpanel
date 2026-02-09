@@ -3,13 +3,11 @@ package router
 import "xiacutai-server/internal/api"
 
 func init() {
-	group := router.Group("/app/storages")
+	group := router.Group("/datastorage")
 	{
-		group.GET("", api.DataStorageList)
-		group.POST("", api.DataStorageCreate)
-		group.DELETE("", api.DataStorageClear)
-		group.GET("/:id", api.DataStorageGet)
-		group.PATCH("/:id", api.DataStorageUpdate)
-		group.DELETE("/:id", api.DataStorageDelete)
+		group.POST("/sound/add", api.DataStorageSoundCreate)
+		group.POST("/list", api.DataStorageList)
+		group.POST("/delete", api.DataStorageDelete)
+		group.POST("/update", api.DataStorageUpdate)
 	}
 }

@@ -68,9 +68,8 @@ type TaskFilters struct {
 	Biz    string
 	Status []string
 	Type   *int
-
-	Page int `form:"page"`
-	Size int `form:"size"`
+	Page   int `form:"page"`
+	Size   int `form:"size"`
 }
 
 func (s *SQLiteStore) CreateTask(task domain.DataTaskModel) (domain.DataTaskModel, error) {
