@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/component/sqllite"
 	"xiacutai-server/internal/domain"
@@ -139,5 +140,83 @@ func DataTaskList(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"list": list,
+	})
+}
+
+func DataTaskCancel(ctx *gin.Context) {
+	var req taskOperateRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		Err(ctx, err)
+		return
+	}
+	if req.ID <= 0 {
+		Err(ctx, errs.ParamError)
+		return
+	}
+	current, err := service.DataTask.GetTask(req.ID)
+	if err != nil {
+		Err(ctx, err)
+		return
+	}
+	switch current.Status {
+	case domain.TaskStatusQueue, domain.TaskStatusWait:
+	case domain.TaskStatusRunning:
+		if err := service.CancelEasyServerTask(req.ID); err != nil {
+			Err(ctx, err)
+			return
+		}
+	default:
+		Err(ctx, errs.New("任务状态不允许取消"))
+		return
+	}
+	task, err := service.DataTask.UpdateTask(req.ID, map[string]any{
+		"status":    domain.TaskStatusFail,
+		"statusMsg": "cancelled",
+		"endTime":   time.Now().UnixMilli(),
+	})
+	if err != nil {
+		Err(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, task)
+}
+
+func DataTaskContinue(ctx *gin.Context) {
+	var req taskOperateRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		Err(ctx, err)
+		return
+	}
+	if req.ID <= 0 {
+		Err(ctx, errs.ParamError)
+		return
+	}
+	task, err := service.DataTask.UpdateTask(req.ID, map[string]any{
+		"status":    domain.TaskStatusQueue,
+		"statusMsg": "",
+	})
+	if err != nil {
+		Err(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, task)
+}
+
+func DataTaskDelete(ctx *gin.Context) {
+	var req taskOperateRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		Err(ctx, err)
+		return
+	}
+	if req.ID <= 0 {
+		Err(ctx, errs.ParamError)
+		return
+	}
+	if err := service.DataTask.DeleteTask(req.ID); err != nil {
+		Err(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"id": req.ID,
 	})
 }
