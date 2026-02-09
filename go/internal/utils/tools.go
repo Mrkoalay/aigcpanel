@@ -8,3 +8,11 @@ func GetEnv(key, def string) string {
 	}
 	return def
 }
+func Contains(arr []string, target string) bool {
+	for _, v := range arr {
+		if v == target {
+			return true
+		}
+	}
+	return false
+}

@@ -122,7 +122,7 @@ func (s *model) ModelAdd(configPath string) (domain.LocalModelConfigInfo, error)
 // ModelList
 ////////////////////////////////////////////////////////////
 
-func (s *model) ModelList() ([]domain.LocalModelConfigInfo, error) {
+func (s *model) ModelList(functionName string) ([]domain.LocalModelConfigInfo, error) {
 
 	reg, err := loadRegistry()
 	if err != nil {
@@ -147,7 +147,16 @@ func (s *model) ModelList() ([]domain.LocalModelConfigInfo, error) {
 			continue
 		}
 
-		list = append(list, parseConfigToInfo(cfg, r.LocalPath))
+		modelConfigInfo := parseConfigToInfo(cfg, r.LocalPath)
+		functions := modelConfigInfo.Functions
+		if functionName != "" {
+			if functions != nil && utils.Contains(functions, functionName) {
+				list = append(list, modelConfigInfo)
+			}
+			continue
+		}
+
+		list = append(list, modelConfigInfo)
 	}
 
 	log.Info("返回模型列表", zap.Int("count", len(list)))

@@ -24,8 +24,14 @@ func ModelAdd(ctx *gin.Context) {
 	})
 }
 func ModelList(ctx *gin.Context) {
-
-	out, err := service.Model.ModelList()
+	var req struct {
+		FunctionName string `json:"functionName"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		Err(ctx, err)
+		return
+	}
+	out, err := service.Model.ModelList(req.FunctionName)
 	if err != nil {
 		Err(ctx, err)
 		return
