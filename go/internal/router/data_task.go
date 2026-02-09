@@ -11,6 +11,7 @@ func init() {
 		group.POST("/cancel", api.DataTaskCancel)
 		group.POST("/continue", api.DataTaskContinue)
 		group.POST("/delete", api.DataTaskDelete)
+		group.POST("/update", api.DataTaskUpdate)
 
 	}
 }
