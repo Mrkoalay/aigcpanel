@@ -125,6 +125,8 @@ func handleSoundTask(task domain.DataTaskModel) error {
 	}
 
 	server := easyserver.NewEasyServer(*serverConfig)
+	registerTaskServer(task.ID, server)
+	defer unregisterTaskServer(task.ID)
 	server.ServerInfo = serverInfo
 	if err := server.Start(); err != nil {
 		return setTaskFailed(task.ID, err)
