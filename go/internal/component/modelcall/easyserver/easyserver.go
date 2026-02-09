@@ -21,6 +21,7 @@ type EasyServer struct {
 		StartTime int64 // 启动时间
 	}
 	controller *exec.Cmd // 控制进程
+	CancelChan chan struct{}
 }
 
 // NewEasyServer 创建一个新的 EasyServer 实例
@@ -33,6 +34,7 @@ func NewEasyServer(config ServerConfig) *EasyServer {
 	return &EasyServer{
 		ServerConfig: config,
 		IsRunning:    false,
+		CancelChan:   make(chan struct{}),
 	}
 }
 
@@ -61,6 +63,7 @@ func (es *EasyServer) Config() (*TaskResult, error) {
 func (es *EasyServer) Start() error {
 	es.IsRunning = true
 	es.ServerRuntime.StartTime = time.Now().Unix()
+	es.CancelChan = make(chan struct{})
 	return nil
 }
 
@@ -80,9 +83,15 @@ func (es *EasyServer) Stop() error {
 		if err := es.controller.Process.Kill(); err != nil {
 			return fmt.Errorf("failed to kill process: %v", err)
 		}
-		es.controller.Wait()
+		//	es.controller.Wait()
 		es.controller = nil
 	}
+
+	// 通知执行循环退出
+	if es.CancelChan != nil {
+		close(es.CancelChan)
+	}
+
 	es.IsRunning = false
 	return nil
 }
@@ -284,9 +293,12 @@ func (es *EasyServer) executeCommand(
 	launcherResult *LauncherResultType,
 ) error {
 
+	es.CancelChan = make(chan struct{})
+
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Dir = es.ServerInfo.LocalPath
 
+	// ---------- env ----------
 	env := []string{}
 	for k, v := range envMap {
 		v = strings.ReplaceAll(v, "${CONFIG}", configPath)
@@ -297,22 +309,45 @@ func (es *EasyServer) executeCommand(
 
 	es.controller = cmd
 
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
+	// ---------- pipe ----------
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
 
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 
-	done := make(chan error, 1)
+	done := make(chan struct{})
+	waitDone := make(chan error, 1)
 
-	// 关键：只监听输出，不等进程退出
+	// ⭐ Wait 只允许在这里
+	go func() {
+		waitDone <- cmd.Wait()
+	}()
+
+	// ---------- 读取日志 ----------
 	read := func(r io.Reader) {
 		scanner := bufio.NewScanner(r)
 		buf := make([]byte, 0, 1024*1024)
 		scanner.Buffer(buf, 8*1024*1024)
 
-		for scanner.Scan() {
+		for {
+			select {
+			case <-es.CancelChan:
+				return
+			default:
+			}
+
+			if !scanner.Scan() {
+				return
+			}
+
 			line := scanner.Text()
 			fmt.Println(line)
 
@@ -323,7 +358,7 @@ func (es *EasyServer) executeCommand(
 					launcherResult.Result[k] = v
 				}
 
-				// ⭐⭐⭐ 关键：收到最终结果立即返回
+				// 收到最终结果
 				if _, hasUrl := result["url"]; hasUrl ||
 					result["records"] != nil ||
 					result["error"] != nil {
@@ -331,8 +366,7 @@ func (es *EasyServer) executeCommand(
 					now := time.Now().Unix()
 					launcherResult.EndTime = &now
 
-					cmd.Process.Kill()
-					done <- nil
+					close(done)
 					return
 				}
 			}
@@ -342,15 +376,28 @@ func (es *EasyServer) executeCommand(
 	go read(stdout)
 	go read(stderr)
 
-	// 无输出超时（10分钟）
 	timeout := time.After(10 * time.Minute)
 
+	// ---------- 主等待 ----------
 	select {
+
 	case <-done:
+		_ = cmd.Process.Kill()
+		<-waitDone
 		return nil
+
+	case <-es.CancelChan:
+		_ = cmd.Process.Kill()
+		<-waitDone
+		return fmt.Errorf("task cancelled")
+
 	case <-timeout:
-		cmd.Process.Kill()
-		return fmt.Errorf("model timeout (no terminal result)")
+		_ = cmd.Process.Kill()
+		<-waitDone
+		return fmt.Errorf("model timeout")
+
+	case err := <-waitDone:
+		return err
 	}
 }
 

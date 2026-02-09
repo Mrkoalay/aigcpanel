@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"net/http"
 	"strings"
 	"time"
 	"xiacutai-server/internal/component/errs"
@@ -112,7 +111,9 @@ func DataTaskCreate(ctx *gin.Context) {
 		Err(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, created)
+	OK(ctx, gin.H{
+		"data": created,
+	})
 }
 
 type dataTaskListRequest struct {
@@ -138,8 +139,8 @@ func DataTaskList(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
-		"list": list,
+	OK(ctx, gin.H{
+		"data": list,
 	})
 }
 
@@ -178,7 +179,9 @@ func DataTaskCancel(ctx *gin.Context) {
 		Err(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, task)
+	OK(ctx, gin.H{
+		"data": task,
+	})
 }
 
 func DataTaskContinue(ctx *gin.Context) {
@@ -191,15 +194,28 @@ func DataTaskContinue(ctx *gin.Context) {
 		Err(ctx, errs.ParamError)
 		return
 	}
-	task, err := service.DataTask.UpdateTask(req.ID, map[string]any{
-		"status":    domain.TaskStatusQueue,
-		"statusMsg": "",
-	})
+
+	current, err := service.DataTask.GetTask(req.ID)
 	if err != nil {
 		Err(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, task)
+	if current.Status == domain.TaskStatusFail {
+		task, err := service.DataTask.UpdateTask(req.ID, map[string]any{
+			"status":    domain.TaskStatusQueue,
+			"statusMsg": "",
+		})
+		if err != nil {
+			Err(ctx, err)
+			return
+		}
+		OK(ctx, gin.H{
+			"data": task,
+		})
+		return
+	}
+
+	OK(ctx, gin.H{})
 }
 
 func DataTaskDelete(ctx *gin.Context) {
@@ -212,11 +228,21 @@ func DataTaskDelete(ctx *gin.Context) {
 		Err(ctx, errs.ParamError)
 		return
 	}
+	current, err := service.DataTask.GetTask(req.ID)
+	if current.Status == domain.TaskStatusRunning {
+		Err(ctx, errs.New("不可删除运行中任务"))
+		return
+	}
+	if err != nil {
+		Err(ctx, err)
+		return
+	}
+
 	if err := service.DataTask.DeleteTask(req.ID); err != nil {
 		Err(ctx, err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{
-		"id": req.ID,
+	OK(ctx, gin.H{
+		"data": req.ID,
 	})
 }
