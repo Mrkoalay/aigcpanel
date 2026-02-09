@@ -1,5 +1,13 @@
 package domain
 
+const (
+	TaskStatusQueue   = "queue"
+	TaskStatusWait    = "wait"
+	TaskStatusRunning = "running"
+	TaskStatusSuccess = "success"
+	TaskStatusFail    = "fail"
+)
+
 type DataTaskModel struct {
 	ID            int64  `gorm:"column:id;primaryKey;autoIncrement"`
 	CreatedAt     int64  `gorm:"column:createdAt;not null"`

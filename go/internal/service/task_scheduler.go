@@ -1,0 +1,257 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+	"xiacutai-server/internal/component/log"
+	"xiacutai-server/internal/component/modelcall"
+	"xiacutai-server/internal/component/modelcall/easyserver"
+	"xiacutai-server/internal/component/sqllite"
+	"xiacutai-server/internal/domain"
+	"xiacutai-server/internal/utils"
+
+	"go.uber.org/zap"
+)
+
+var errTaskRetry = errors.New("task requires retry")
+
+type soundTaskConfig struct {
+	Type           string                 `json:"type"`
+	TtsServerKey   string                 `json:"ttsServerKey"`
+	TtsParam       map[string]any         `json:"ttsParam"`
+	CloneServerKey string                 `json:"cloneServerKey"`
+	CloneParam     map[string]any         `json:"cloneParam"`
+	PromptURL      string                 `json:"promptUrl"`
+	PromptText     string                 `json:"promptText"`
+	Text           string                 `json:"text"`
+	Extra          map[string]interface{} `json:"-"`
+}
+
+func StartTaskScheduler(ctx context.Context) {
+	interval := getTaskPollInterval()
+	ticker := time.NewTicker(interval)
+
+	log.Info("DataTask scheduler started", zap.Duration("interval", interval))
+
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Info("DataTask scheduler stopped")
+				return
+			case <-ticker.C:
+				if err := runTaskSchedulerOnce(); err != nil {
+					log.Error("DataTask scheduler failed", zap.Error(err))
+				}
+			}
+		}
+	}()
+}
+
+func getTaskPollInterval() time.Duration {
+	const defaultInterval = 2 * time.Second
+	raw := utils.GetEnv("AIGCPANEL_TASK_POLL_INTERVAL_MS", "")
+	if raw == "" {
+		return defaultInterval
+	}
+	ms, err := time.ParseDuration(raw + "ms")
+	if err != nil || ms <= 0 {
+		return defaultInterval
+	}
+	return ms
+}
+
+func runTaskSchedulerOnce() error {
+	filters := sqllite.TaskFilters{
+		Status: []string{domain.TaskStatusQueue, domain.TaskStatusWait},
+	}
+	tasks, err := DataTask.ListTasks(filters)
+	if err != nil {
+		return err
+	}
+
+	for _, task := range tasks {
+		if task.Biz != "SoundGenerate" {
+			continue
+		}
+		if err := handleSoundTask(task); err != nil {
+			log.Error("Handle task failed", zap.Int64("taskId", task.ID), zap.Error(err))
+		}
+	}
+	return nil
+}
+
+func handleSoundTask(task domain.DataTaskModel) error {
+	if task.Status != domain.TaskStatusQueue && task.Status != domain.TaskStatusWait {
+		return nil
+	}
+
+	if err := setTaskRunning(task.ID); err != nil {
+		return err
+	}
+
+	cfg, err := parseSoundTaskConfig(task.ModelConfig)
+	if err != nil {
+		return setTaskFailed(task.ID, err)
+	}
+
+	serverKey := cfg.TtsServerKey
+	if cfg.Type == "SoundClone" {
+		serverKey = cfg.CloneServerKey
+	}
+
+	modelInfo, err := Model.Get(serverKey)
+	if err != nil {
+		return setTaskFailed(task.ID, err)
+	}
+
+	serverConfig, err := modelcall.LoadConfigFromJSON(modelInfo.Path + "/config.json")
+	if err != nil {
+		return setTaskFailed(task.ID, err)
+	}
+
+	serverInfo := &easyserver.ServerInfo{
+		LocalPath:        modelInfo.Path,
+		Name:             modelInfo.Name,
+		Version:          modelInfo.Version,
+		Setting:          modelInfo.Setting,
+		LogFile:          "",
+		EventChannelName: "",
+		Config:           *serverConfig,
+	}
+
+	server := easyserver.NewEasyServer(*serverConfig)
+	server.ServerInfo = serverInfo
+	if err := server.Start(); err != nil {
+		return setTaskFailed(task.ID, err)
+	}
+
+	result, err := callEasyServerTask(task, cfg, server)
+	if err != nil {
+		return setTaskFailed(task.ID, err)
+	}
+
+	if result != nil {
+		return updateTaskResult(task.ID, result)
+	}
+
+	return setTaskFailed(task.ID, fmt.Errorf("empty task result"))
+}
+
+func parseSoundTaskConfig(raw string) (*soundTaskConfig, error) {
+	cfg := &soundTaskConfig{}
+	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
+		return nil, err
+	}
+	if cfg.Type == "" {
+		cfg.Type = "SoundTts"
+	}
+	return cfg, nil
+}
+
+func setTaskRunning(taskID int64) error {
+	_, err := DataTask.UpdateTask(taskID, map[string]any{
+		"status":    domain.TaskStatusRunning,
+		"startTime": time.Now().UnixMilli(),
+	})
+	return err
+}
+
+func setTaskFailed(taskID int64, err error) error {
+	statusMsg := ""
+	if err != nil {
+		statusMsg = err.Error()
+	}
+	_, updateErr := DataTask.UpdateTask(taskID, map[string]any{
+		"status":    domain.TaskStatusFail,
+		"statusMsg": statusMsg,
+		"endTime":   time.Now().UnixMilli(),
+	})
+	return updateErr
+}
+
+func callEasyServerTask(task domain.DataTaskModel, cfg *soundTaskConfig, server *easyserver.EasyServer) (*easyserver.TaskResult, error) {
+	taskID := fmt.Sprintf("task-%d", task.ID)
+	data := easyserver.ServerFunctionDataType{
+		ID:     taskID,
+		Result: map[string]interface{}{},
+		Param:  cfg.TtsParam,
+		Text:   cfg.Text,
+	}
+
+	switch cfg.Type {
+	case "SoundClone":
+		data.Param = cfg.CloneParam
+		data.PromptAudio = cfg.PromptURL
+		data.PromptText = cfg.PromptText
+		return server.SoundClone(data)
+	default:
+		return server.SoundTts(data)
+	}
+}
+
+func updateTaskResult(taskID int64, result *easyserver.TaskResult) error {
+	jobResult, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+
+	resultData, err := extractResultData(result)
+	if err != nil {
+		if errors.Is(err, errTaskRetry) {
+			_, updateErr := DataTask.UpdateTask(taskID, map[string]any{
+				"status":    domain.TaskStatusQueue,
+				"statusMsg": err.Error(),
+			})
+			return updateErr
+		}
+		return setTaskFailed(taskID, err)
+	}
+
+	resultRaw, err := json.Marshal(resultData)
+	if err != nil {
+		return err
+	}
+
+	updates := map[string]any{
+		"jobResult": string(jobResult),
+		"result":    string(resultRaw),
+		"endTime":   time.Now().UnixMilli(),
+		"status":    domain.TaskStatusSuccess,
+	}
+
+	_, err = DataTask.UpdateTask(taskID, updates)
+	return err
+}
+
+func extractResultData(result *easyserver.TaskResult) (map[string]any, error) {
+	if result == nil {
+		return nil, fmt.Errorf("task result is nil")
+	}
+	if result.Code != 0 {
+		if result.Msg == "" {
+			return nil, fmt.Errorf("task failed")
+		}
+		return nil, fmt.Errorf(result.Msg)
+	}
+
+	dataMap, ok := result.Data.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("task result data format invalid")
+	}
+
+	if dataMap["type"] == "retry" {
+		return nil, errTaskRetry
+	}
+
+	resultData, ok := dataMap["data"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("task result payload missing")
+	}
+
+	return resultData, nil
+}

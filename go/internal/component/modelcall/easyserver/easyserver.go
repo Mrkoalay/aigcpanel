@@ -235,25 +235,27 @@ func (es *EasyServer) prepareEnvironment() map[string]string {
 	for _, e := range os.Environ() {
 		parts := strings.SplitN(e, "=", 2)
 		if len(parts) == 2 {
-			envMap[parts[0]] = parts[1]
+			envMap[strings.ToUpper(parts[0])] = parts[1]
+
 		}
 	}
 
 	// Add custom paths
 	path := envMap["PATH"]
-	envMap["PATH"] = fmt.Sprintf("%s:%s:%s/binary", path, es.ServerInfo.LocalPath, es.ServerInfo.LocalPath)
+	envMap["PATH"] = fmt.Sprintf("%s;%s;%s/binary", path, es.ServerInfo.LocalPath, es.ServerInfo.LocalPath)
 
 	// 添加 _aienv 方便调试
 	venv := es.ServerInfo.LocalPath + string(os.PathSeparator) + "_aienv"
 	python := venv + string(os.PathSeparator) + "Scripts"
 	torchlib := venv + string(os.PathSeparator) + "Lib" + string(os.PathSeparator) + "site-packages" + string(os.PathSeparator) + "torch" + string(os.PathSeparator) + "lib"
 	oldPath := envMap["PATH"]
-	envMap["PATH"] = fmt.Sprintf("%s;%s;%s;%s",
+	newPath := fmt.Sprintf("%s;%s;%s;%s",
 		oldPath,
 		venv,
 		python,
 		torchlib,
 	)
+	envMap["PATH"] = newPath
 
 	// Add other environment variables
 	envMap["PYTHONIOENCODING"] = "utf-8"
@@ -282,151 +284,74 @@ func (es *EasyServer) executeCommand(
 	launcherResult *LauncherResultType,
 ) error {
 
-	fmt.Printf("Executing command: %v\n", command)
-	fmt.Printf("Working directory: %s\n", es.ServerInfo.LocalPath)
-
-	// Create command
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Dir = es.ServerInfo.LocalPath
 
-	// Set environment variables
 	env := []string{}
 	for k, v := range envMap {
-		// Replace placeholders in environment variables
 		v = strings.ReplaceAll(v, "${CONFIG}", configPath)
 		v = strings.ReplaceAll(v, "${ROOT}", es.ServerInfo.LocalPath)
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-
 	cmd.Env = env
 
-	// Print environment variables for debugging
-	fmt.Printf("Environment variables:\n")
-	for _, e := range env {
-		fmt.Printf("  %s\n", e)
-	}
-
-	// Set the controller
 	es.controller = cmd
 
-	// Capture stdout and stderr
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to get stdout pipe: %v", err)
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+
+	if err := cmd.Start(); err != nil {
+		return err
 	}
 
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("failed to get stderr pipe: %v", err)
-	}
+	done := make(chan error, 1)
 
-	// Start the command
-	err = cmd.Start()
-	if err != nil {
-		return fmt.Errorf("failed to start command: %v", err)
-	}
+	// 关键：只监听输出，不等进程退出
+	read := func(r io.Reader) {
+		scanner := bufio.NewScanner(r)
+		buf := make([]byte, 0, 1024*1024)
+		scanner.Buffer(buf, 8*1024*1024)
 
-	fmt.Printf("Command started with PID: %d\n", cmd.Process.Pid)
-
-	// Create channels to signal when we're done reading
-	stdoutDone := make(chan error, 1)
-	stderrDone := make(chan error, 1)
-	cmdDone := make(chan error, 1)
-
-	// Buffer to store logs
-	var logBuffer strings.Builder
-
-	// Function to read from a pipe
-	readPipe := func(pipe io.Reader, pipeName string, doneChan chan error) {
-		defer func() {
-			doneChan <- nil // Signal that this goroutine is done
-		}()
-
-		scanner := bufio.NewScanner(pipe)
 		for scanner.Scan() {
 			line := scanner.Text()
-			logBuffer.WriteString(line + "\n")
-			fmt.Printf("[%s] %s\n", pipeName, line)
+			fmt.Println(line)
 
-			// Try to extract result from logs
-			result, err := ExtractResultFromLogs(taskID, line)
-			if err == nil && result != nil {
-				// Merge the result into launcherResult
+			result, ok := ExtractResultFromLogs(taskID, line)
+			if ok && result != nil {
+
 				for k, v := range result {
 					launcherResult.Result[k] = v
 				}
-				fmt.Printf("Extracted result for task %s: %+v\n", taskID, result)
+
+				// ⭐⭐⭐ 关键：收到最终结果立即返回
+				if _, hasUrl := result["url"]; hasUrl ||
+					result["records"] != nil ||
+					result["error"] != nil {
+
+					now := time.Now().Unix()
+					launcherResult.EndTime = &now
+
+					cmd.Process.Kill()
+					done <- nil
+					return
+				}
 			}
-		}
-		if err := scanner.Err(); err != nil {
-			fmt.Printf("Error reading from %s: %v\n", pipeName, err)
-			doneChan <- fmt.Errorf("error reading from %s: %v", pipeName, err)
 		}
 	}
 
-	// Read from both stdout and stderr concurrently
-	go readPipe(stdout, "stdout", stdoutDone)
-	go readPipe(stderr, "stderr", stderrDone)
+	go read(stdout)
+	go read(stderr)
 
-	// Wait for the command to finish
-	go func() {
-		err := cmd.Wait()
-		cmdDone <- err // Send the command result
-	}()
+	// 无输出超时（10分钟）
+	timeout := time.After(10 * time.Minute)
 
-	// Wait for all goroutines to complete or timeout
-	var cmdErr error
-	completed := 0
-	expectedCompletions := 3 // stdout, stderr, and command
-
-	for completed < expectedCompletions {
-		select {
-		case err := <-stdoutDone:
-			completed++
-			if err != nil && cmdErr == nil {
-				cmdErr = err
-			}
-		case err := <-stderrDone:
-			completed++
-			if err != nil && cmdErr == nil {
-				cmdErr = err
-			}
-		case err := <-cmdDone:
-			completed++
-			if err != nil && cmdErr == nil {
-				cmdErr = err
-			}
-		case <-time.After(120 * time.Second): // Increased timeout to 120 seconds for voice cloning
-			// Terminate the process
-			if cmd.Process != nil {
-				fmt.Printf("Command timed out, terminating process\n")
-				cmd.Process.Kill()
-			}
-			return fmt.Errorf("command timed out after 120 seconds")
-		}
+	select {
+	case <-done:
+		return nil
+	case <-timeout:
+		cmd.Process.Kill()
+		return fmt.Errorf("model timeout (no terminal result)")
 	}
-
-	if cmdErr != nil {
-		fmt.Printf("Command finished with error: %v\n", cmdErr)
-		// Even if there's an error, we might have extracted some results
-		// Only return error if we didn't get a result
-		if len(launcherResult.Result) == 0 {
-			return fmt.Errorf("command failed: %v", cmdErr)
-		}
-		// If we have results, we consider it a success even with some errors
-		fmt.Printf("Command completed with partial errors, but results were extracted\n")
-	} else {
-		fmt.Printf("Command finished successfully\n")
-	}
-
-	// Set end time
-	endTime := time.Now().Unix()
-	launcherResult.EndTime = &endTime
-
-	// Print final log buffer for debugging
-	fmt.Printf("Full log output:\n%s\n", logBuffer.String())
-
-	return nil
 }
 
 // SoundTts handles sound TTS function

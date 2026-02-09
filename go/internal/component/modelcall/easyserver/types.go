@@ -5,7 +5,7 @@ package easyserver
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -103,37 +103,51 @@ type TaskResultData struct {
 
 // ExtractResultFromLogs extracts result from logs
 // This function mimics the behavior of extractResultFromLogs in the Electron project
-func ExtractResultFromLogs(dataID string, logs string) (map[string]interface{}, error) {
-	var result map[string]interface{}
+var reRunResult = regexp.MustCompile(`AigcPanelRunResult\[(.*?)\]\[(.*?)\]`)
+var reMidResult = regexp.MustCompile(`Result\[(.*?)\]\[(.*?)\]`)
 
-	lines := strings.Split(logs, "\n")
-	for _, line := range lines {
-		// Looking for pattern: AigcPanelRunResult[dataID][base64EncodedResult]
-		pattern := fmt.Sprintf("AigcPanelRunResult[%s][", dataID)
-		startIdx := strings.Index(line, pattern)
-		if startIdx != -1 {
-			// Find the closing bracket
-			startIdx += len(pattern)
-			endIdx := strings.Index(line[startIdx:], "]")
-			if endIdx != -1 {
-				encodedResult := line[startIdx : startIdx+endIdx]
-				// Decode base64
-				decodedBytes, err := base64.StdEncoding.DecodeString(encodedResult)
-				if err != nil {
-					return nil, fmt.Errorf("failed to decode base64 result: %v", err)
-				}
+func ExtractResultFromLogs(taskID string, line string) (map[string]interface{}, bool) {
 
-				// Parse JSON
-				err = json.Unmarshal(decodedBytes, &result)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse JSON result: %v", err)
-				}
-				return result, nil
-			}
+	// ===== 1. 最终结果 =====
+	if m := reRunResult.FindStringSubmatch(line); len(m) == 3 {
+		if m[1] != taskID {
+			return nil, false
+		}
+
+		raw, err := base64.StdEncoding.DecodeString(m[2])
+		if err != nil {
+			return map[string]interface{}{"error": err.Error()}, true
+		}
+
+		out := map[string]interface{}{}
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return map[string]interface{}{"error": err.Error()}, true
+		}
+
+		return out, true
+	}
+
+	// ===== 2. 中间结果（非常关键！防止超时）=====
+	if m := reMidResult.FindStringSubmatch(line); len(m) == 3 {
+		if m[1] != taskID {
+			return nil, false
+		}
+
+		// 只是表示进程活着
+		return map[string]interface{}{"_alive": true}, true
+	}
+
+	// ===== 3. 简单JSON =====
+	if strings.HasPrefix(line, "AigcPanelRunResult ") {
+		s := strings.TrimPrefix(line, "AigcPanelRunResult ")
+		s = strings.ReplaceAll(s, "'", `"`)
+		out := map[string]interface{}{}
+		if json.Unmarshal([]byte(s), &out) == nil {
+			return out, true
 		}
 	}
 
-	return result, nil
+	return nil, false
 }
 
 // Sleep is a utility function to sleep for specified milliseconds

@@ -58,13 +58,19 @@ func (s *SQLiteStore) Close() error {
 }
 
 func (s *SQLiteStore) migrate() error {
-	return s.db.AutoMigrate(&domain.DataTaskModel{})
+	return s.db.AutoMigrate(
+		&domain.DataTaskModel{},
+		&domain.DataStorageModel{}, // ⭐ 新表
+	)
 }
 
 type TaskFilters struct {
 	Biz    string
 	Status []string
 	Type   *int
+
+	Page int `form:"page"`
+	Size int `form:"size"`
 }
 
 func (s *SQLiteStore) CreateTask(task domain.DataTaskModel) (domain.DataTaskModel, error) {
