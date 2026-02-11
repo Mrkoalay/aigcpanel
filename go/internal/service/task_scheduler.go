@@ -73,7 +73,7 @@ func getTaskPollInterval() time.Duration {
 
 func runTaskSchedulerOnce() error {
 	filters := sqllite.TaskFilters{
-		Status: []string{domain.TaskStatusQueue, domain.TaskStatusWait},
+		Status: []string{domain.TaskStatusQueue},
 	}
 	tasks, err := DataTask.ListTasks(filters)
 	if err != nil {
@@ -92,7 +92,7 @@ func runTaskSchedulerOnce() error {
 }
 
 func handleSoundTask(task domain.DataTaskModel) error {
-	if task.Status != domain.TaskStatusQueue && task.Status != domain.TaskStatusWait {
+	if task.Status != domain.TaskStatusQueue {
 		return nil
 	}
 

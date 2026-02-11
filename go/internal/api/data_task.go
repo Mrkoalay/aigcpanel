@@ -31,6 +31,11 @@ type taskUpdateRequest struct {
 	Title string `json:"title"`
 }
 
+type soundReplaceConfirmRequest struct {
+	ID      int64                               `json:"id"`
+	Records []service.SoundReplaceConfirmRecord `json:"records"`
+}
+
 var TypeBizMap = map[string]string{
 	"soundTts":     "SoundGenerate",
 	"soundClone":   "SoundGenerate",
@@ -286,6 +291,26 @@ func DataTaskContinue(ctx *gin.Context) {
 	}
 
 	OK(ctx, gin.H{})
+}
+
+func DataTaskSoundReplaceConfirm(ctx *gin.Context) {
+	var req soundReplaceConfirmRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		Err(ctx, err)
+		return
+	}
+	if req.ID <= 0 || len(req.Records) == 0 {
+		Err(ctx, errs.ParamError)
+		return
+	}
+
+	task, err := service.SubmitSoundReplaceConfirm(req.ID, req.Records)
+	if err != nil {
+		Err(ctx, err)
+		return
+	}
+
+	OK(ctx, gin.H{"data": task})
 }
 
 func DataTaskDelete(ctx *gin.Context) {
