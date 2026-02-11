@@ -12,14 +12,16 @@ import (
 )
 
 type taskCreateRequest struct {
-	Text      string                 `json:"text"`
-	Type      string                 `json:"type"` // 类型
-	ServerKey string                 `json:"serverKey"`
-	Param     map[string]any         `json:"param"`
-	Extra     map[string]interface{} `json:"-"`
-	PromptId  int64                  `json:"promptId"` // 声音克隆-声音ID
-	Audio     string                 `json:"audio"`    // 语音转文字-声音文件
-
+	Text          string                 `json:"text"`
+	Type          string                 `json:"type"` // 类型
+	ServerKey     string                 `json:"serverKey"`
+	Param         map[string]any         `json:"param"`
+	SoundAsr      map[string]any         `json:"soundAsr"`
+	SoundGenerate map[string]any         `json:"soundGenerate"`
+	Extra         map[string]interface{} `json:"-"`
+	PromptId      int64                  `json:"promptId"` // 声音克隆-声音ID
+	Audio         string                 `json:"audio"`    // 语音转文字-声音文件
+	Video         string                 `json:"video"`    // 声音替换-视频文件
 }
 type taskOperateRequest struct {
 	ID int64 `json:"id"`
@@ -30,9 +32,11 @@ type taskUpdateRequest struct {
 }
 
 var TypeBizMap = map[string]string{
-	"soundTts":   "SoundGenerate",
-	"soundClone": "SoundGenerate",
-	"soundAsr":   "SoundAsr",
+	"soundTts":     "SoundGenerate",
+	"soundClone":   "SoundGenerate",
+	"soundAsr":     "SoundAsr",
+	"videoGen":     "VideoGen",
+	"soundReplace": "SoundReplace",
 }
 
 type PromptContent struct {
@@ -48,7 +52,19 @@ func DataTaskCreate(ctx *gin.Context) {
 	}
 
 	serverKey := req.ServerKey
-	model, err := service.Model.Get(serverKey)
+	model := &domain.LocalModelConfigInfo{}
+	err := error(nil)
+	if req.Type != domain.FunctionSoundReplace {
+		model, err = service.Model.Get(serverKey)
+		if err != nil {
+			Err(ctx, err)
+			return
+		}
+	} else {
+		model.Name, _ = req.SoundGenerate["serverName"].(string)
+		model.Title, _ = req.SoundGenerate["serverTitle"].(string)
+		model.Version, _ = req.SoundGenerate["serverVersion"].(string)
+	}
 
 	typeStr := req.Type
 	modelConfig := map[string]any{}
@@ -76,8 +92,21 @@ func DataTaskCreate(ctx *gin.Context) {
 			"promptUrl":      promptContent.URL,
 			"promptText":     promptContent.PromptText,
 		}
-	case "videoGen":
-		//result, err = server.VideoGen(*functionData)
+	case domain.FunctionVideoGen:
+		modelConfig = map[string]any{
+			"type":      typeStr,
+			"serverKey": serverKey,
+			"video":     req.Video,
+			"audio":     req.Audio,
+			"param":     req.Param,
+		}
+	case domain.FunctionSoundReplace:
+		modelConfig = map[string]any{
+			"type":          typeStr,
+			"video":         req.Video,
+			"soundAsr":      req.SoundAsr,
+			"soundGenerate": req.SoundGenerate,
+		}
 	case domain.FunctionSoundAsr:
 		paramRaw, err := json.Marshal(map[string]any{})
 		if err != nil {
@@ -100,12 +129,8 @@ func DataTaskCreate(ctx *gin.Context) {
 		Err(ctx, err)
 		return
 	}
-	paramRaw, err := json.Marshal(map[string]any{})
-	if err != nil {
-		Err(ctx, err)
-		return
-	}
 
+	paramRaw, err := json.Marshal(map[string]any{})
 	if err != nil {
 		Err(ctx, err)
 		return
