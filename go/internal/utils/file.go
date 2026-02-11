@@ -6,11 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 )
-
-var dirOnce sync.Once
 
 var DataDir string
 var RegistryFile string

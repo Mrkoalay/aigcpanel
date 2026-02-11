@@ -7,12 +7,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 	"xiacutai-server/internal/component/modelcall"
 	"xiacutai-server/internal/component/modelcall/easyserver"
 	"xiacutai-server/internal/domain"
+	"xiacutai-server/internal/utils"
 )
 
 type soundReplaceRecord struct {
@@ -191,16 +193,20 @@ func parseAsrRecords(asrData map[string]any) ([]*soundReplaceRecord, error) {
 		if !ok {
 			continue
 		}
-		text := asString(m["text"])
-		if text == "" {
+		segments := asArray(m["segments"])
+		if len(segments) == 0 {
 			continue
 		}
-		start := toInt64(m["start"])
-		end := toInt64(m["end"])
-		if end <= start {
-			continue
+		for _, segment := range segments {
+			start := toInt64(segment["start"])
+			end := toInt64(segment["end"])
+			text := asString(segment["text"])
+			if end <= start {
+				continue
+			}
+			records = append(records, &soundReplaceRecord{Text: text, Start: start, End: end})
 		}
-		records = append(records, &soundReplaceRecord{Text: text, Start: start, End: end})
+
 	}
 	return records, nil
 }
@@ -242,20 +248,30 @@ func alignAudioDuration(input, output string, targetMs int64) error {
 	}
 	targetSec := fmt.Sprintf("%.3f", float64(targetMs)/1000.0)
 	if actualMs > targetMs {
-		return runCommand("ffmpeg", "-y", "-i", input, "-t", targetSec, "-acodec", "pcm_s16le", output)
+		return runCommand(GetFFmpegPath(), "-y", "-i", input, "-t", targetSec, "-acodec", "pcm_s16le", output)
 	}
 	if actualMs < targetMs {
-		return runCommand("ffmpeg", "-y", "-i", input, "-af", "apad", "-t", targetSec, "-acodec", "pcm_s16le", output)
+		return runCommand(GetFFmpegPath(), "-y", "-i", input, "-af", "apad", "-t", targetSec, "-acodec", "pcm_s16le", output)
 	}
 	return copyFile(input, output)
 }
 
+func GetFFmpegPath() string {
+	name := "ffmpeg.exe"
+
+	return filepath.Join(utils.GetExeDir(), "binary", name)
+}
+func GetFFprobePath() string {
+	name := "ffprobe.exe"
+
+	return filepath.Join(utils.GetExeDir(), "binary", name)
+}
 func ffmpegExtractAudio(video, output string) error {
-	return runCommand("ffmpeg", "-y", "-i", video, "-vn", "-acodec", "pcm_s16le", output)
+	return runCommand(GetFFmpegPath(), "-y", "-i", video, "-vn", "-acodec", "pcm_s16le", output)
 }
 
 func ffmpegEncodeMp3(input, output string) error {
-	return runCommand("ffmpeg", "-y", "-i", input, "-codec:a", "libmp3lame", "-q:a", "2", output)
+	return runCommand(GetFFmpegPath(), "-y", "-i", input, "-codec:a", "libmp3lame", "-q:a", "2", output)
 }
 
 func ffmpegConcatAudio(files []string, output string) error {
@@ -281,7 +297,7 @@ func ffmpegReplaceVideoAudio(video, audio, output string) error {
 }
 
 func ffprobeDurationMs(file string) (int64, error) {
-	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file).CombinedOutput()
+	out, err := exec.Command(GetFFprobePath(), "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file).CombinedOutput()
 	if err != nil {
 		return 0, fmt.Errorf("ffprobe failed: %w, output: %s", err, string(out))
 	}
@@ -316,6 +332,53 @@ func asMap(v any) map[string]any {
 		return m
 	}
 	return map[string]any{}
+}
+func asArray(v any) []map[string]any {
+	if v == nil {
+		return []map[string]any{}
+	}
+
+	// 1️⃣ 已经是目标类型
+	if arr, ok := v.([]map[string]any); ok {
+		return arr
+	}
+
+	// 2️⃣ []interface{}
+	if arr, ok := v.([]any); ok {
+		out := make([]map[string]any, 0, len(arr))
+		for _, item := range arr {
+			out = append(out, asMap(item))
+		}
+		return out
+	}
+
+	// 3️⃣ json string
+	if s, ok := v.(string); ok {
+		var out []map[string]any
+		if json.Unmarshal([]byte(s), &out) == nil {
+			return out
+		}
+	}
+
+	// 4️⃣ json bytes
+	if b, ok := v.([]byte); ok {
+		var out []map[string]any
+		if json.Unmarshal(b, &out) == nil {
+			return out
+		}
+	}
+
+	// 5️⃣ struct slice (最关键)
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Slice {
+		out := make([]map[string]any, 0, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			out = append(out, asMap(rv.Index(i).Interface()))
+		}
+		return out
+	}
+
+	return []map[string]any{}
 }
 
 func toInt64(v any) int64 {

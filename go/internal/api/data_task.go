@@ -51,26 +51,24 @@ func DataTaskCreate(ctx *gin.Context) {
 		return
 	}
 
+	typeStr := req.Type
+	modelConfig := map[string]any{}
+
 	serverKey := req.ServerKey
 	model := &domain.LocalModelConfigInfo{}
-	err := error(nil)
-	if req.Type != domain.FunctionSoundReplace {
-		model, err = service.Model.Get(serverKey)
+	if serverKey != "" {
+
+		dbModel, err := service.Model.Get(serverKey)
 		if err != nil {
 			Err(ctx, err)
 			return
 		}
-	} else {
-		model.Name, _ = req.SoundGenerate["serverName"].(string)
-		model.Title, _ = req.SoundGenerate["serverTitle"].(string)
-		model.Version, _ = req.SoundGenerate["serverVersion"].(string)
+		model = dbModel
 	}
-
-	typeStr := req.Type
-	modelConfig := map[string]any{}
 
 	switch typeStr {
 	case domain.FunctionSoundTts:
+
 		modelConfig = map[string]any{
 			"type":         typeStr,
 			"ttsServerKey": serverKey,
@@ -78,6 +76,7 @@ func DataTaskCreate(ctx *gin.Context) {
 			"text":         req.Text,
 		}
 	case domain.FunctionSoundClone:
+
 		promptId := req.PromptId
 		storageModel, _ := service.DataStorage.GetStorage(promptId)
 		var promptContent PromptContent
@@ -101,6 +100,34 @@ func DataTaskCreate(ctx *gin.Context) {
 			"param":     req.Param,
 		}
 	case domain.FunctionSoundReplace:
+
+		// 补充soundAsr
+
+		req.Param = map[string]any{}
+
+		// 补充 soundGenerate
+		cloneServerKey, _ := req.SoundGenerate["cloneServerKey"].(string)
+		cloneModel, err := service.Model.Get(cloneServerKey)
+		if err != nil {
+			Err(ctx, err)
+			return
+		}
+		req.SoundGenerate["serverName"] = cloneModel.Name
+		req.SoundGenerate["serverTitle"] = cloneModel.Title
+		req.SoundGenerate["serverVersion"] = cloneModel.Version
+
+		promptId := req.SoundGenerate["promptId"].(float64)
+		storageModel, err := service.DataStorage.GetStorage(int64(promptId))
+		if err != nil {
+			Err(ctx, err)
+			return
+		}
+		var promptContent PromptContent
+		json.Unmarshal([]byte(storageModel.Content), &promptContent)
+		req.SoundGenerate["promptTitle"] = storageModel.Title
+		req.SoundGenerate["promptUrl"] = promptContent.URL
+		req.SoundGenerate["promptText"] = promptContent.PromptText
+
 		modelConfig = map[string]any{
 			"type":          typeStr,
 			"video":         req.Video,
@@ -108,6 +135,7 @@ func DataTaskCreate(ctx *gin.Context) {
 			"soundGenerate": req.SoundGenerate,
 		}
 	case domain.FunctionSoundAsr:
+		serverKey := req.ServerKey
 		paramRaw, err := json.Marshal(map[string]any{})
 		if err != nil {
 			Err(ctx, err)
