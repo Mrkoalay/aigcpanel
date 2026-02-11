@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/component/modelcall"
 	"xiacutai-server/internal/component/modelcall/easyserver"
 	"xiacutai-server/internal/domain"
@@ -29,7 +30,7 @@ type soundReplaceRecord struct {
 func runSoundReplaceTask(task domain.DataTaskModel, cfg *taskConfig) error {
 	videoPath := cfg.Video
 	if videoPath == "" {
-		return fmt.Errorf("video is required")
+		return errs.New("video is required")
 	}
 
 	job := map[string]any{
@@ -94,7 +95,7 @@ func runSoundReplaceAsrPhase(task domain.DataTaskModel, cfg *taskConfig, job map
 	asrStart := time.Now().UnixMilli()
 	asrServerKey := asString(cfg.SoundAsr["serverKey"])
 	if asrServerKey == "" {
-		return fmt.Errorf("soundAsr.serverKey is required")
+		return errs.New("soundAsr.serverKey is required")
 	}
 	asrParam := asMap(cfg.SoundAsr["param"])
 	asrServer, err := startEasyServerByKey(asrServerKey)
@@ -120,7 +121,7 @@ func runSoundReplaceAsrPhase(task domain.DataTaskModel, cfg *taskConfig, job map
 	}
 	if len(records) == 0 {
 		unregisterTaskServer(task.ID)
-		return fmt.Errorf("asr records empty")
+		return errs.New("asr records empty")
 	}
 	asrEnd := time.Now().UnixMilli()
 	jobAsr["status"] = "success"
@@ -153,7 +154,7 @@ func runSoundReplaceGeneratePhase(task domain.DataTaskModel, cfg *taskConfig, jo
 		return err
 	}
 	if len(confirmRecords) == 0 {
-		return fmt.Errorf("confirm records empty")
+		return errs.New("confirm records empty")
 	}
 
 	persistDir := filepath.Dir(cfg.Video)
@@ -182,7 +183,7 @@ func runSoundReplaceGeneratePhase(task domain.DataTaskModel, cfg *taskConfig, jo
 		serverKey = asString(cfg.SoundGenerate["cloneServerKey"])
 	}
 	if serverKey == "" {
-		return fmt.Errorf("soundGenerate server key is required")
+		return errs.New("soundGenerate server key is required")
 	}
 	server, err := startEasyServerByKey(serverKey)
 	if err != nil {
@@ -215,7 +216,7 @@ func runSoundReplaceGeneratePhase(task domain.DataTaskModel, cfg *taskConfig, jo
 			rawOutput := filepath.Join(persistDir, fmt.Sprintf("sound_replace_%d_seg_%d_raw.wav", stamp, i))
 			if err := generateSpeechForRecord(task.ID, i, rec, cfg.SoundGenerate, server, rawOutput); err != nil {
 				if err := createSilenceAudio(aligned, targetMs); err != nil {
-					return fmt.Errorf("segment %d generate failed: %v", i, err)
+					return errs.New(fmt.Sprintf("segment %d generate failed: %v", i, err))
 				}
 			} else if err := alignAudioDuration(rawOutput, aligned, targetMs); err != nil {
 				if err := createSilenceAudio(aligned, targetMs); err != nil {
@@ -348,7 +349,7 @@ func parseAsrRecords(asrData map[string]any) ([]*soundReplaceRecord, error) {
 		}
 	}
 	if len(items) == 0 {
-		return nil, fmt.Errorf("asr records not found")
+		return nil, errs.New("asr records not found")
 	}
 	records := make([]*soundReplaceRecord, 0, len(items))
 	for _, item := range items {
@@ -414,7 +415,7 @@ func generateSpeechForRecord(taskID int64, idx int, rec *soundReplaceRecord, sou
 	}
 	src := asString(resultData["url"])
 	if src == "" {
-		return fmt.Errorf("sound generate result url empty")
+		return errs.New("sound generate result url empty")
 	}
 	return copyFile(src, outputPath)
 }
@@ -462,7 +463,7 @@ func createSilenceAudio(output string, durationMs int64) error {
 
 func ffmpegConcatAudio(files []string, output string) error {
 	if len(files) == 0 {
-		return fmt.Errorf("no audio files to concat")
+		return errs.New("no audio files to concat")
 	}
 	listFile := filepath.Join(filepath.Dir(output), "concat.txt")
 	f, err := os.Create(listFile)
@@ -485,7 +486,7 @@ func ffmpegReplaceVideoAudio(video, audio, output string) error {
 func ffprobeDurationMs(file string) (int64, error) {
 	out, err := exec.Command(GetFFprobePath(), "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file).CombinedOutput()
 	if err != nil {
-		return 0, fmt.Errorf("ffprobe failed: %w, output: %s", err, string(out))
+		return 0, errs.New(fmt.Sprintf("ffprobe failed: %w, output: %s", err, string(out)))
 	}
 	sec, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
 	if err != nil {
@@ -497,7 +498,7 @@ func ffprobeDurationMs(file string) (int64, error) {
 func runCommand(cmd string, args ...string) error {
 	out, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s failed: %w, output: %s", cmd, err, string(out))
+		return errs.New(fmt.Sprintf("%s failed: %w, output: %s", cmd, err, string(out)))
 	}
 	return nil
 }

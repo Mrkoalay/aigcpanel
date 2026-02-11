@@ -59,7 +59,7 @@ func callModelFunction(modelPath, configPath, functionName string, params []stri
 	// 加载配置
 	config, err := modelcall.LoadConfigFromJSON(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("加载配置失败: %v", err)
+		return nil, errs.New("加载配置失败: %v", err)
 	}
 
 	// 创建 EasyServer 实例
@@ -67,7 +67,7 @@ func callModelFunction(modelPath, configPath, functionName string, params []stri
 
 	// 启动服务器
 	if err := server.Start(); err != nil {
-		return nil, fmt.Errorf("启动服务器失败: %v", err)
+		return nil, errs.New("启动服务器失败: %v", err)
 	}
 	defer server.Stop()
 
@@ -136,11 +136,11 @@ func callModelFunction(modelPath, configPath, functionName string, params []stri
 	case "asr":
 		result, err = server.Asr(*functionData)
 	default:
-		return nil, fmt.Errorf("不支持的功能: %s", functionName)
+		return nil, errs.New("不支持的功能: %s", functionName)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("调用功能失败: %v", err)
+		return nil, errs.New("调用功能失败: %v", err)
 	}
 
 	return result, nil
@@ -151,7 +151,7 @@ func loadConfigFromJSON(configPath string) (*easyserver.ServerConfig, error) {
 	// 读取配置文件
 	data, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %v", err)
+		return nil, errs.New("读取配置文件失败: %v", err)
 	}
 
 	// 定义一个中间结构体来解析 JSON
@@ -187,7 +187,7 @@ func loadConfigFromJSON(configPath string) (*easyserver.ServerConfig, error) {
 
 	// 解析 JSON
 	if err := json.Unmarshal(data, &configJSON); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败: %v", err)
+		return nil, errs.New("解析配置文件失败: %v", err)
 	}
 
 	// 确定使用哪个 entry

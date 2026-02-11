@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"xiacutai-server/internal/component/errs"
 )
 
 var DataDir string
@@ -53,7 +54,7 @@ func CopyToStorage(src string) (string, error) {
 
 	// 检查源文件
 	if _, err := os.Stat(src); err != nil {
-		return "", fmt.Errorf("file not exist: %v", err)
+		return "", errs.New(fmt.Sprintf("file not exist: %v", err))
 	}
 
 	// 唯一文件名（避免并发冲突）

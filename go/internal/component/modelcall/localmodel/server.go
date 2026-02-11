@@ -28,13 +28,13 @@ func NewServerManager() *ServerManager {
 func (sm *ServerManager) LoadServerConfig(configPath string) (*ServerConfig, error) {
 	content, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %v", err)
+		return nil, errs.New("failed to read config file: %v", err)
 	}
 
 	var config ServerConfig
 	err = json.Unmarshal(content, &config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %v", err)
+		return nil, errs.New("failed to parse config file: %v", err)
 	}
 
 	return &config, nil
@@ -51,7 +51,7 @@ func (sm *ServerManager) AddServer(config *ServerConfig, localPath string) error
 	// Check if server already exists
 	for _, server := range sm.servers {
 		if server.Key == key {
-			return fmt.Errorf("server with key %s already exists", key)
+			return errs.New("server with key %s already exists", key)
 		}
 	}
 
@@ -132,7 +132,7 @@ func (sm *ServerManager) StartServer(key string) error {
 	for i := range sm.servers {
 		if sm.servers[i].Key == key {
 			if sm.servers[i].Status == ServerRunning {
-				return fmt.Errorf("server is already running")
+				return errs.New("server is already running")
 			}
 
 			// Update status
@@ -154,7 +154,7 @@ func (sm *ServerManager) StartServer(key string) error {
 		}
 	}
 
-	return fmt.Errorf("server with key %s not found", key)
+	return errs.New("server with key %s not found", key)
 }
 
 // StopServer stops a server
@@ -165,7 +165,7 @@ func (sm *ServerManager) StopServer(key string) error {
 	for i := range sm.servers {
 		if sm.servers[i].Key == key {
 			if sm.servers[i].Status != ServerRunning {
-				return fmt.Errorf("server is not running")
+				return errs.New("server is not running")
 			}
 
 			// Update status
@@ -185,7 +185,7 @@ func (sm *ServerManager) StopServer(key string) error {
 		}
 	}
 
-	return fmt.Errorf("server with key %s not found", key)
+	return errs.New("server with key %s not found", key)
 }
 
 // ServerInfo returns information about a server
@@ -214,7 +214,7 @@ func (sm *ServerManager) ServerInfo(key string) (*ServerInfo, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("server with key %s not found", key)
+	return nil, errs.New("server with key %s not found", key)
 }
 
 // PingServer checks if a server is running
@@ -232,7 +232,7 @@ func (sm *ServerManager) PingServer(key string) (bool, error) {
 		}
 	}
 
-	return false, fmt.Errorf("server with key %s not found", key)
+	return false, errs.New("server with key %s not found", key)
 }
 
 // CallFunction calls a function on a server
@@ -242,11 +242,11 @@ func (sm *ServerManager) CallFunction(key string, function string, data ServerFu
 	sm.mutex.RUnlock()
 
 	if server == nil {
-		return nil, fmt.Errorf("server with key %s not found", key)
+		return nil, errs.New("server with key %s not found", key)
 	}
 
 	if server.Status != ServerRunning {
-		return nil, fmt.Errorf("server is not running")
+		return nil, errs.New("server is not running")
 	}
 
 	// Check if function is supported
@@ -259,7 +259,7 @@ func (sm *ServerManager) CallFunction(key string, function string, data ServerFu
 	}
 
 	if !supported {
-		return nil, fmt.Errorf("function %s is not supported by this server", function)
+		return nil, errs.New("function %s is not supported by this server", function)
 	}
 
 	// Handle different functions
@@ -273,7 +273,7 @@ func (sm *ServerManager) CallFunction(key string, function string, data ServerFu
 	case "asr":
 		return sm.callAsr(server, data)
 	default:
-		return nil, fmt.Errorf("function %s is not implemented", function)
+		return nil, errs.New("function %s is not implemented", function)
 	}
 }
 
@@ -307,20 +307,20 @@ func (sm *ServerManager) callSoundTts(server *ServerRecord, data ServerFunctionD
 	// Prepare config JSON file
 	configPath, err := sm.prepareConfigJson(configMap)
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare config: %v", err)
+		return nil, errs.New("failed to prepare config: %v", err)
 	}
 	defer os.Remove(configPath)
 
 	// Execute model process
 	cmd, err := sm.executeModelProcess(server, configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute model process: %v", err)
+		return nil, errs.New("failed to execute model process: %v", err)
 	}
 
 	// Wait for completion and get result
 	err = cmd.Wait()
 	if err != nil {
-		return nil, fmt.Errorf("model process failed: %v", err)
+		return nil, errs.New("model process failed: %v", err)
 	}
 
 	return &TaskResult{
@@ -448,20 +448,20 @@ func (sm *ServerManager) prepareConfigJson(configData map[string]interface{}) (s
 	// Create a temporary file
 	tmpFile, err := ioutil.TempFile("", "model-config-*.json")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %v", err)
+		return "", errs.New("failed to create temp file: %v", err)
 	}
 	defer tmpFile.Close()
 
 	// Marshal config data to JSON
 	configBytes, err := json.Marshal(configData)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal config data: %v", err)
+		return "", errs.New("failed to marshal config data: %v", err)
 	}
 
 	// Write to file
 	_, err = tmpFile.Write(configBytes)
 	if err != nil {
-		return "", fmt.Errorf("failed to write config data: %v", err)
+		return "", errs.New("failed to write config data: %v", err)
 	}
 
 	return tmpFile.Name(), nil
@@ -470,7 +470,7 @@ func (sm *ServerManager) prepareConfigJson(configData map[string]interface{}) (s
 // executeModelProcess executes the model process
 func (sm *ServerManager) executeModelProcess(server *ServerRecord, configPath string) (*exec.Cmd, error) {
 	if server.Config.EasyServer == nil {
-		return nil, fmt.Errorf("server is not an EasyServer")
+		return nil, errs.New("server is not an EasyServer")
 	}
 
 	// Prepare command

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/component/log"
 	"xiacutai-server/internal/component/modelcall"
 	"xiacutai-server/internal/component/modelcall/easyserver"
@@ -158,7 +159,7 @@ func handleSoundTask(task domain.DataTaskModel) error {
 		return updateTaskResult(task.ID, result)
 	}
 
-	return setTaskFailed(task.ID, fmt.Errorf("empty task result"))
+	return setTaskFailed(task.ID, errs.New("empty task result"))
 }
 
 func parseSoundTaskConfig(raw string) (*taskConfig, error) {
@@ -261,18 +262,18 @@ func updateTaskResult(taskID int64, result *easyserver.TaskResult) error {
 
 func extractResultData(result *easyserver.TaskResult) (map[string]any, error) {
 	if result == nil {
-		return nil, fmt.Errorf("task result is nil")
+		return nil, errs.New("task result is nil")
 	}
 	if result.Code != 0 {
 		if result.Msg == "" {
-			return nil, fmt.Errorf("task failed")
+			return nil, errs.New("task failed")
 		}
-		return nil, fmt.Errorf(result.Msg)
+		return nil, errs.New(result.Msg)
 	}
 
 	dataMap, ok := result.Data.(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("task result data format invalid")
+		return nil, errs.New("task result data format invalid")
 	}
 
 	if dataMap["type"] == "retry" {
@@ -281,7 +282,7 @@ func extractResultData(result *easyserver.TaskResult) (map[string]any, error) {
 
 	resultData, ok := dataMap["data"].(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("task result payload missing")
+		return nil, errs.New("task result payload missing")
 	}
 
 	return resultData, nil

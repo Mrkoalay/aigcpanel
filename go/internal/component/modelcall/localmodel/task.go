@@ -55,7 +55,7 @@ func (tm *TaskManager) GetTask(taskID string) (*TaskRecord, error) {
 
 	task, exists := tm.tasks[taskID]
 	if !exists {
-		return nil, fmt.Errorf("task with ID %s not found", taskID)
+		return nil, errs.New("task with ID %s not found", taskID)
 	}
 
 	// Return a copy to prevent external modification
@@ -70,7 +70,7 @@ func (tm *TaskManager) UpdateTask(taskID string, updates map[string]interface{})
 
 	task, exists := tm.tasks[taskID]
 	if !exists {
-		return fmt.Errorf("task with ID %s not found", taskID)
+		return errs.New("task with ID %s not found", taskID)
 	}
 
 	// Apply updates
@@ -124,7 +124,7 @@ func (tm *TaskManager) DeleteTask(taskID string) error {
 
 	_, exists := tm.tasks[taskID]
 	if !exists {
-		return fmt.Errorf("task with ID %s not found", taskID)
+		return errs.New("task with ID %s not found", taskID)
 	}
 
 	delete(tm.tasks, taskID)
@@ -138,7 +138,7 @@ func (tm *TaskManager) RunSoundTtsTask(taskID string, serverKey string, text str
 		"status": TaskRunning,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update task status: %v", err)
+		return nil, errs.New("failed to update task status: %v", err)
 	}
 
 	// Prepare function data
@@ -157,7 +157,7 @@ func (tm *TaskManager) RunSoundTtsTask(taskID string, serverKey string, text str
 			"status":    TaskFail,
 			"statusMsg": err.Error(),
 		})
-		return nil, fmt.Errorf("failed to call soundTts function: %v", err)
+		return nil, errs.New("failed to call soundTts function: %v", err)
 	}
 
 	// Update task with result
@@ -168,7 +168,7 @@ func (tm *TaskManager) RunSoundTtsTask(taskID string, serverKey string, text str
 		"result":  result.Data,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update task with result: %v", err)
+		return nil, errs.New("failed to update task with result: %v", err)
 	}
 
 	return result, nil
@@ -181,7 +181,7 @@ func (tm *TaskManager) RunSoundCloneTask(taskID string, serverKey string, text, 
 		"status": TaskRunning,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update task status: %v", err)
+		return nil, errs.New("failed to update task status: %v", err)
 	}
 
 	// Prepare function data
@@ -202,7 +202,7 @@ func (tm *TaskManager) RunSoundCloneTask(taskID string, serverKey string, text, 
 			"status":    TaskFail,
 			"statusMsg": err.Error(),
 		})
-		return nil, fmt.Errorf("failed to call soundClone function: %v", err)
+		return nil, errs.New("failed to call soundClone function: %v", err)
 	}
 
 	// Update task with result
@@ -213,7 +213,7 @@ func (tm *TaskManager) RunSoundCloneTask(taskID string, serverKey string, text, 
 		"result":  result.Data,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update task with result: %v", err)
+		return nil, errs.New("failed to update task with result: %v", err)
 	}
 
 	return result, nil
@@ -226,7 +226,7 @@ func (tm *TaskManager) RunVideoGenTask(taskID string, serverKey string, video, a
 		"status": TaskRunning,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update task status: %v", err)
+		return nil, errs.New("failed to update task status: %v", err)
 	}
 
 	// Prepare function data
@@ -246,7 +246,7 @@ func (tm *TaskManager) RunVideoGenTask(taskID string, serverKey string, video, a
 			"status":    TaskFail,
 			"statusMsg": err.Error(),
 		})
-		return nil, fmt.Errorf("failed to call videoGen function: %v", err)
+		return nil, errs.New("failed to call videoGen function: %v", err)
 	}
 
 	// Update task with result
@@ -257,7 +257,7 @@ func (tm *TaskManager) RunVideoGenTask(taskID string, serverKey string, video, a
 		"result":  result.Data,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update task with result: %v", err)
+		return nil, errs.New("failed to update task with result: %v", err)
 	}
 
 	return result, nil
@@ -270,7 +270,7 @@ func (tm *TaskManager) RunAsrTask(taskID string, serverKey string, audio string,
 		"status": TaskRunning,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update task status: %v", err)
+		return nil, errs.New("failed to update task status: %v", err)
 	}
 
 	// Prepare function data
@@ -289,7 +289,7 @@ func (tm *TaskManager) RunAsrTask(taskID string, serverKey string, audio string,
 			"status":    TaskFail,
 			"statusMsg": err.Error(),
 		})
-		return nil, fmt.Errorf("failed to call asr function: %v", err)
+		return nil, errs.New("failed to call asr function: %v", err)
 	}
 
 	// Update task with result
@@ -300,7 +300,7 @@ func (tm *TaskManager) RunAsrTask(taskID string, serverKey string, audio string,
 		"result":  result.Data,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update task with result: %v", err)
+		return nil, errs.New("failed to update task with result: %v", err)
 	}
 
 	return result, nil
@@ -313,12 +313,12 @@ func (tm *TaskManager) SaveTasks(filename string) error {
 
 	data, err := json.Marshal(tm.tasks)
 	if err != nil {
-		return fmt.Errorf("failed to marshal tasks: %v", err)
+		return errs.New("failed to marshal tasks: %v", err)
 	}
 
 	err = ioutil.WriteFile(filename, data, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to write tasks to file: %v", err)
+		return errs.New("failed to write tasks to file: %v", err)
 	}
 
 	return nil
@@ -331,12 +331,12 @@ func (tm *TaskManager) LoadTasks(filename string) error {
 
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return fmt.Errorf("failed to read tasks from file: %v", err)
+		return errs.New("failed to read tasks from file: %v", err)
 	}
 
 	err = json.Unmarshal(data, &tm.tasks)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal tasks: %v", err)
+		return errs.New("failed to unmarshal tasks: %v", err)
 	}
 
 	// Update task ID counter

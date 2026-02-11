@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"sync"
+	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/component/modelcall/easyserver"
 )
 
@@ -33,7 +34,7 @@ func CancelEasyServerTask(taskID int64) error {
 	server, ok := taskServerRegistry.servers[taskID]
 	taskServerRegistry.Unlock()
 	if !ok || server == nil {
-		return fmt.Errorf("task %d is not running", taskID)
+		return errs.New(fmt.Sprintf("task %d is not running", taskID))
 	}
 	return server.Cancel()
 }

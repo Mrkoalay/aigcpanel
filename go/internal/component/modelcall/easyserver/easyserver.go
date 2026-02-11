@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/domain"
 )
 
@@ -82,7 +83,7 @@ func (es *EasyServer) Ping() (bool, error) {
 func (es *EasyServer) Stop() error {
 	if es.controller != nil {
 		if err := es.controller.Process.Kill(); err != nil {
-			return fmt.Errorf("failed to kill process: %v", err)
+			return errs.New(fmt.Sprintf("failed to kill process: %v", err.Error()))
 		}
 		//	es.controller.Wait()
 		es.controller = nil
@@ -152,7 +153,7 @@ func (es *EasyServer) CallFunc(
 	// Calculate config data
 	configData, err := configCalculator(data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate config: %v", err)
+		return nil, errs.New(fmt.Sprintf("failed to calculate config: %v", err))
 	}
 
 	// Add settings to config data
@@ -161,7 +162,7 @@ func (es *EasyServer) CallFunc(
 	// Prepare config JSON file
 	configJsonPath, err := es.prepareConfigJson(configData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare config JSON: %v", err)
+		return nil, errs.New(fmt.Sprintf("failed to prepare config JSON: %v", err))
 	}
 
 	// Clean up config file when done
@@ -191,7 +192,7 @@ func (es *EasyServer) CallFunc(
 	// Execute command
 	err = es.executeCommand(command, envMap, configJsonPath, data.ID, &launcherResult)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute command: %v", err)
+		return nil, errs.New(fmt.Sprintf("failed to execute command: %v", err))
 	}
 
 	// Calculate end time
@@ -201,7 +202,7 @@ func (es *EasyServer) CallFunc(
 	// Calculate result data
 	resultDataFinal, err := resultDataCalculator(data, launcherResult)
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate result data: %v", err)
+		return nil, errs.New(fmt.Sprintf("failed to calculate result data: %v", err))
 	}
 
 	resultData["data"] = resultDataFinal
@@ -218,20 +219,20 @@ func (es *EasyServer) prepareConfigJson(configData map[string]interface{}) (stri
 	// Create a temporary file
 	tmpFile, err := ioutil.TempFile("", "easyserver-config-*.json")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %v", err)
+		return "", errs.New(fmt.Sprintf("failed to create temp file: %v", err))
 	}
 	defer tmpFile.Close()
 
 	// Marshal config data to JSON
 	configBytes, err := json.Marshal(configData)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal config data: %v", err)
+		return "", errs.New(fmt.Sprintf("failed to marshal config data: %v", err))
 	}
 
 	// Write to file
 	_, err = tmpFile.Write(configBytes)
 	if err != nil {
-		return "", fmt.Errorf("failed to write config data: %v", err)
+		return "", errs.New(fmt.Sprintf("failed to write config data: %v", err))
 	}
 
 	return tmpFile.Name(), nil
@@ -390,12 +391,12 @@ func (es *EasyServer) executeCommand(
 	case <-es.CancelChan:
 		_ = cmd.Process.Kill()
 		<-waitDone
-		return fmt.Errorf("task cancelled")
+		return errs.New("task cancelled")
 
 	case <-timeout:
 		_ = cmd.Process.Kill()
 		<-waitDone
-		return fmt.Errorf("model timeout")
+		return errs.New("model timeout")
 
 	case err := <-waitDone:
 		return err
@@ -419,9 +420,9 @@ func (es *EasyServer) SoundTts(data ServerFunctionDataType) (*TaskResult, error)
 	resultDataCalculator := func(data ServerFunctionDataType, launcherResult LauncherResultType) (map[string]interface{}, error) {
 		if _, ok := launcherResult.Result["url"]; !ok {
 			if errMsg, ok := launcherResult.Result["error"]; ok {
-				return nil, fmt.Errorf("%v", errMsg)
+				return nil, errs.New(fmt.Sprintf("%v", errMsg))
 			}
-			return nil, fmt.Errorf("执行失败，请查看模型日志")
+			return nil, errs.New("执行失败，请查看模型日志")
 		}
 
 		return map[string]interface{}{
@@ -451,9 +452,9 @@ func (es *EasyServer) SoundClone(data ServerFunctionDataType) (*TaskResult, erro
 	resultDataCalculator := func(data ServerFunctionDataType, launcherResult LauncherResultType) (map[string]interface{}, error) {
 		if _, ok := launcherResult.Result["url"]; !ok {
 			if errMsg, ok := launcherResult.Result["error"]; ok {
-				return nil, fmt.Errorf("%v", errMsg)
+				return nil, errs.New(fmt.Sprintf("%v", errMsg))
 			}
-			return nil, fmt.Errorf("执行失败，请查看模型日志")
+			return nil, errs.New("执行失败，请查看模型日志")
 		}
 
 		return map[string]interface{}{
@@ -482,9 +483,9 @@ func (es *EasyServer) VideoGen(data ServerFunctionDataType) (*TaskResult, error)
 	resultDataCalculator := func(data ServerFunctionDataType, launcherResult LauncherResultType) (map[string]interface{}, error) {
 		if _, ok := launcherResult.Result["url"]; !ok {
 			if errMsg, ok := launcherResult.Result["error"]; ok {
-				return nil, fmt.Errorf("%v", errMsg)
+				return nil, errs.New(fmt.Sprintf("%v", errMsg))
 			}
-			return nil, fmt.Errorf("执行失败，请查看模型日志")
+			return nil, errs.New("执行失败，请查看模型日志")
 		}
 
 		return map[string]interface{}{
@@ -512,9 +513,9 @@ func (es *EasyServer) Asr(data ServerFunctionDataType) (*TaskResult, error) {
 	resultDataCalculator := func(data ServerFunctionDataType, launcherResult LauncherResultType) (map[string]interface{}, error) {
 		if _, ok := launcherResult.Result["records"]; !ok {
 			if errMsg, ok := launcherResult.Result["error"]; ok {
-				return nil, fmt.Errorf("%v", errMsg)
+				return nil, errs.New(fmt.Sprintf("%v", errMsg))
 			}
-			return nil, fmt.Errorf("执行失败，请查看模型日志")
+			return nil, errs.New("执行失败，请查看模型日志")
 		}
 
 		return map[string]interface{}{

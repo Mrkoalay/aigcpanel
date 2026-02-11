@@ -2,9 +2,9 @@ package service
 
 import (
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
+	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/domain"
 )
 
@@ -20,10 +20,10 @@ func SubmitSoundReplaceConfirm(taskID int64, records []SoundReplaceConfirmRecord
 		return domain.DataTaskModel{}, err
 	}
 	if task.Biz != "SoundReplace" {
-		return domain.DataTaskModel{}, fmt.Errorf("task is not sound replace")
+		return domain.DataTaskModel{}, errs.New("task is not sound replace")
 	}
 	if task.Status != domain.TaskStatusWait {
-		return domain.DataTaskModel{}, fmt.Errorf("task status must be wait")
+		return domain.DataTaskModel{}, errs.New("task status must be wait")
 	}
 
 	job := map[string]any{}
@@ -33,7 +33,7 @@ func SubmitSoundReplaceConfirm(taskID int64, records []SoundReplaceConfirmRecord
 		}
 	}
 	if asString(job["step"]) != "Confirm" {
-		return domain.DataTaskModel{}, fmt.Errorf("task is not waiting for confirm")
+		return domain.DataTaskModel{}, errs.New("task is not waiting for confirm")
 	}
 
 	cleaned := make([]SoundReplaceConfirmRecord, 0, len(records))
@@ -45,7 +45,7 @@ func SubmitSoundReplaceConfirm(taskID int64, records []SoundReplaceConfirmRecord
 		cleaned = append(cleaned, SoundReplaceConfirmRecord{Text: text, Start: rec.Start, End: rec.End})
 	}
 	if len(cleaned) == 0 {
-		return domain.DataTaskModel{}, fmt.Errorf("confirm records empty")
+		return domain.DataTaskModel{}, errs.New("confirm records empty")
 	}
 	sort.SliceStable(cleaned, func(i, j int) bool {
 		if cleaned[i].Start == cleaned[j].Start {

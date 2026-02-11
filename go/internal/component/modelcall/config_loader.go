@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/component/modelcall/easyserver"
 )
 
@@ -20,7 +21,7 @@ func LoadConfigFromJSON(configPath string) (*easyserver.ServerConfig, error) {
 	// 读取配置文件
 	data, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %v", err)
+		return nil, errs.New(fmt.Sprintf("读取配置文件失败: %v", err))
 	}
 
 	// 定义一个中间结构体来解析 JSON
@@ -56,7 +57,7 @@ func LoadConfigFromJSON(configPath string) (*easyserver.ServerConfig, error) {
 
 	// 解析 JSON
 	if err := json.Unmarshal(data, &configJSON); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败: %v", err)
+		return nil, errs.New(fmt.Sprintf("解析配置文件失败: %v", err))
 	}
 
 	// 确定使用哪个 entry
