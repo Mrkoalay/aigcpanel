@@ -72,7 +72,7 @@ type ServerInfo struct {
 type ServerFunctionDataType struct {
 	ID          string                 `json:"id"`                    // 任务ID
 	Result      map[string]interface{} `json:"result"`                // 结果数据
-	Param       map[string]interface{} `json:"param,omitempty"`       // 参数
+	Param       map[string]interface{} `json:"param"`                 // 参数
 	Text        string                 `json:"text,omitempty"`        // 文本内容
 	Video       string                 `json:"video,omitempty"`       // 视频文件路径
 	Audio       string                 `json:"audio,omitempty"`       // 音频文件路径
@@ -103,7 +103,7 @@ type TaskResultData struct {
 
 // ExtractResultFromLogs extracts result from logs
 // This function mimics the behavior of extractResultFromLogs in the Electron project
-var reRunResult = regexp.MustCompile(`AigcPanelRunResult\[(.*?)\]\[(.*?)\]`)
+var reRunResult = regexp.MustCompile(`XiacutAIRunResult\[(.*?)\]\[(.*?)\]`)
 var reMidResult = regexp.MustCompile(`Result\[(.*?)\]\[(.*?)\]`)
 
 func ExtractResultFromLogs(taskID string, line string) (map[string]interface{}, bool) {
@@ -138,8 +138,8 @@ func ExtractResultFromLogs(taskID string, line string) (map[string]interface{}, 
 	}
 
 	// ===== 3. 简单JSON =====
-	if strings.HasPrefix(line, "AigcPanelRunResult ") {
-		s := strings.TrimPrefix(line, "AigcPanelRunResult ")
+	if strings.HasPrefix(line, "XiacutAIRunResult ") {
+		s := strings.TrimPrefix(line, "XiacutAIRunResult ")
 		s = strings.ReplaceAll(s, "'", `"`)
 		out := map[string]interface{}{}
 		if json.Unmarshal([]byte(s), &out) == nil {

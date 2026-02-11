@@ -18,14 +18,17 @@ import (
 
 var errTaskRetry = errors.New("task requires retry")
 
-type soundTaskConfig struct {
+type taskConfig struct {
 	Type           string                 `json:"type"`
 	TtsServerKey   string                 `json:"ttsServerKey"`
 	TtsParam       map[string]any         `json:"ttsParam"`
+	Param          string                 `json:"param"`
 	CloneServerKey string                 `json:"cloneServerKey"`
+	ServerKey      string                 `json:"serverKey"`
 	CloneParam     map[string]any         `json:"cloneParam"`
 	PromptURL      string                 `json:"promptUrl"`
 	PromptText     string                 `json:"promptText"`
+	Audio          string                 `json:"audio"`
 	Text           string                 `json:"text"`
 	Extra          map[string]interface{} `json:"-"`
 }
@@ -75,9 +78,9 @@ func runTaskSchedulerOnce() error {
 	}
 
 	for _, task := range tasks {
-		if task.Biz != "SoundGenerate" {
-			continue
-		}
+		//if task.Biz != "SoundGenerate" {
+		//	continue
+		//}
 		if err := handleSoundTask(task); err != nil {
 			log.Error("Handle task failed", zap.Int64("taskId", task.ID), zap.Error(err))
 		}
@@ -100,10 +103,12 @@ func handleSoundTask(task domain.DataTaskModel) error {
 	}
 
 	serverKey := cfg.TtsServerKey
-	if cfg.Type == "SoundClone" {
+	if cfg.Type == domain.FunctionSoundClone {
 		serverKey = cfg.CloneServerKey
 	}
-
+	if cfg.Type == domain.FunctionSoundAsr {
+		serverKey = cfg.ServerKey
+	}
 	modelInfo, err := Model.Get(serverKey)
 	if err != nil {
 		return setTaskFailed(task.ID, err)
@@ -144,13 +149,13 @@ func handleSoundTask(task domain.DataTaskModel) error {
 	return setTaskFailed(task.ID, fmt.Errorf("empty task result"))
 }
 
-func parseSoundTaskConfig(raw string) (*soundTaskConfig, error) {
-	cfg := &soundTaskConfig{}
+func parseSoundTaskConfig(raw string) (*taskConfig, error) {
+	cfg := &taskConfig{}
 	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
 		return nil, err
 	}
 	if cfg.Type == "" {
-		cfg.Type = "SoundTts"
+		cfg.Type = domain.FunctionSoundTts
 	}
 	return cfg, nil
 }
@@ -176,7 +181,7 @@ func setTaskFailed(taskID int64, err error) error {
 	return updateErr
 }
 
-func callEasyServerTask(task domain.DataTaskModel, cfg *soundTaskConfig, server *easyserver.EasyServer) (*easyserver.TaskResult, error) {
+func callEasyServerTask(task domain.DataTaskModel, cfg *taskConfig, server *easyserver.EasyServer) (*easyserver.TaskResult, error) {
 	taskID := fmt.Sprintf("task-%d", task.ID)
 	data := easyserver.ServerFunctionDataType{
 		ID:     taskID,
@@ -186,12 +191,19 @@ func callEasyServerTask(task domain.DataTaskModel, cfg *soundTaskConfig, server 
 	}
 
 	switch cfg.Type {
-	case "SoundClone":
+	case domain.FunctionSoundClone:
 		data.Param = cfg.CloneParam
 		data.PromptAudio = cfg.PromptURL
 		data.PromptText = cfg.PromptText
+		data.Text = cfg.Text
 		return server.SoundClone(data)
+	case domain.FunctionSoundAsr:
+		data.Param = map[string]interface{}{}
+		data.Audio = cfg.Audio
+		return server.Asr(data)
 	default:
+		data.Param = cfg.TtsParam
+		data.Text = cfg.Text
 		return server.SoundTts(data)
 	}
 }

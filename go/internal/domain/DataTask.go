@@ -8,6 +8,13 @@ const (
 	TaskStatusFail    = "fail"
 )
 
+const (
+	FunctionVideoGen   string = "videoGen"   // 视频生成功能
+	FunctionSoundTts   string = "soundTts"   // 语音合成功能
+	FunctionSoundClone string = "soundClone" // 语音克隆功能
+	FunctionSoundAsr   string = "soundAsr"   // 语音识别功能
+)
+
 type DataTaskModel struct {
 	ID            int64  `gorm:"column:id;primaryKey;autoIncrement"`
 	CreatedAt     int64  `gorm:"column:createdAt;not null"`

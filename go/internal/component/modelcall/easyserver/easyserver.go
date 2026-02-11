@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"xiacutai-server/internal/domain"
 )
 
 // EasyServer 表示一个 EasyServer 实例，用于管理本地 AI 模型服务
@@ -408,7 +409,7 @@ func (es *EasyServer) SoundTts(data ServerFunctionDataType) (*TaskResult, error)
 			"id":   data.ID,
 			"mode": "local",
 			"modelConfig": map[string]interface{}{
-				"type":  "soundTts",
+				"type":  domain.FunctionSoundTts,
 				"param": data.Param,
 				"text":  data.Text,
 			},
@@ -438,7 +439,7 @@ func (es *EasyServer) SoundClone(data ServerFunctionDataType) (*TaskResult, erro
 			"id":   data.ID,
 			"mode": "local",
 			"modelConfig": map[string]interface{}{
-				"type":        "soundClone",
+				"type":        domain.FunctionSoundClone,
 				"param":       data.Param,
 				"text":        data.Text,
 				"promptAudio": data.PromptAudio,
@@ -501,6 +502,7 @@ func (es *EasyServer) Asr(data ServerFunctionDataType) (*TaskResult, error) {
 			"id":   data.ID,
 			"mode": "local",
 			"modelConfig": map[string]interface{}{
+				"type":  domain.FunctionSoundAsr,
 				"audio": data.Audio,
 				"param": data.Param,
 			},

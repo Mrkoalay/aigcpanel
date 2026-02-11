@@ -9,9 +9,9 @@ import (
 )
 
 func main() {
-	sqllite.Init()
-	utils.InitDirs()
 
+	utils.InitDirs()
+	sqllite.Init()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	service.StartTaskScheduler(ctx)
