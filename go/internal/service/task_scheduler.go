@@ -22,12 +22,15 @@ type taskConfig struct {
 	Type           string                 `json:"type"`
 	TtsServerKey   string                 `json:"ttsServerKey"`
 	TtsParam       map[string]any         `json:"ttsParam"`
-	Param          string                 `json:"param"`
 	CloneServerKey string                 `json:"cloneServerKey"`
 	ServerKey      string                 `json:"serverKey"`
 	CloneParam     map[string]any         `json:"cloneParam"`
 	PromptURL      string                 `json:"promptUrl"`
 	PromptText     string                 `json:"promptText"`
+	Video          string                 `json:"video"`
+	VideoParam     map[string]any         `json:"param"`
+	SoundAsr       map[string]any         `json:"soundAsr"`
+	SoundGenerate  map[string]any         `json:"soundGenerate"`
 	Audio          string                 `json:"audio"`
 	Text           string                 `json:"text"`
 	Extra          map[string]interface{} `json:"-"`
@@ -101,10 +104,19 @@ func handleSoundTask(task domain.DataTaskModel) error {
 	if err != nil {
 		return setTaskFailed(task.ID, err)
 	}
+	if cfg.Type == domain.FunctionSoundReplace {
+		if runErr := runSoundReplaceTask(task, cfg); runErr != nil {
+			return setTaskFailed(task.ID, runErr)
+		}
+		return nil
+	}
 
 	serverKey := cfg.TtsServerKey
 	if cfg.Type == domain.FunctionSoundClone {
 		serverKey = cfg.CloneServerKey
+	}
+	if cfg.Type == domain.FunctionVideoGen {
+		serverKey = cfg.ServerKey
 	}
 	if cfg.Type == domain.FunctionSoundAsr {
 		serverKey = cfg.ServerKey
@@ -201,6 +213,11 @@ func callEasyServerTask(task domain.DataTaskModel, cfg *taskConfig, server *easy
 		data.Param = map[string]interface{}{}
 		data.Audio = cfg.Audio
 		return server.Asr(data)
+	case domain.FunctionVideoGen:
+		data.Param = cfg.VideoParam
+		data.Video = cfg.Video
+		data.Audio = cfg.Audio
+		return server.VideoGen(data)
 	default:
 		data.Param = cfg.TtsParam
 		data.Text = cfg.Text
