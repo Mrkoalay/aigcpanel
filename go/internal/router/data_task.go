@@ -12,6 +12,7 @@ func init() {
 		group.POST("/continue", api.DataTaskContinue)
 		group.POST("/delete", api.DataTaskDelete)
 		group.POST("/update", api.DataTaskUpdate)
+		group.POST("/sound-replace/confirm", api.DataTaskSoundReplaceConfirm)
 
 	}
 }

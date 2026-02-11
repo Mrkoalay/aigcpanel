@@ -27,10 +27,6 @@ type soundReplaceRecord struct {
 }
 
 func runSoundReplaceTask(task domain.DataTaskModel, cfg *taskConfig) error {
-	if task.Status == domain.TaskStatusWait {
-		return nil
-	}
-
 	videoPath := cfg.Video
 	if videoPath == "" {
 		return fmt.Errorf("video is required")
@@ -45,6 +41,23 @@ func runSoundReplaceTask(task domain.DataTaskModel, cfg *taskConfig) error {
 		"Combine":        map[string]any{"status": "queue"},
 		"CombineConfirm": map[string]any{"status": "queue"},
 	}
+	if strings.TrimSpace(task.JobResult) != "" && task.JobResult != "{}" {
+		_ = json.Unmarshal([]byte(task.JobResult), &job)
+	}
+	step := asString(job["step"])
+	if step == "" {
+		step = "ToAudio"
+		job["step"] = step
+	}
+
+	if step == "ToAudio" || step == "SoundAsr" || step == "Confirm" {
+		return runSoundReplaceAsrPhase(task, cfg, job)
+	}
+	return runSoundReplaceGeneratePhase(task, cfg, job)
+}
+
+func runSoundReplaceAsrPhase(task domain.DataTaskModel, cfg *taskConfig, job map[string]any) error {
+	videoPath := cfg.Video
 	if err := saveSoundReplaceProgress(task.ID, domain.TaskStatusRunning, job, nil, ""); err != nil {
 		return err
 	}
@@ -133,6 +146,156 @@ func runSoundReplaceTask(task domain.DataTaskModel, cfg *taskConfig) error {
 	return nil
 }
 
+func runSoundReplaceGeneratePhase(task domain.DataTaskModel, cfg *taskConfig, job map[string]any) error {
+	confirm := asMap(job["Confirm"])
+	confirmRecords, err := parseSoundReplaceRecords(confirm["records"])
+	if err != nil {
+		return err
+	}
+	if len(confirmRecords) == 0 {
+		return fmt.Errorf("confirm records empty")
+	}
+
+	persistDir := filepath.Dir(cfg.Video)
+	stamp := time.Now().UnixMilli()
+	job["step"] = "SoundGenerate"
+	confirm["status"] = "success"
+	job["Confirm"] = confirm
+	jobGen := asMap(job["SoundGenerate"])
+	jobGen["status"] = "running"
+
+	genRecords, err := parseSoundReplaceRecords(jobGen["records"])
+	if err != nil || len(genRecords) != len(confirmRecords) {
+		genRecords = make([]*soundReplaceRecord, 0, len(confirmRecords))
+		for _, rec := range confirmRecords {
+			genRecords = append(genRecords, &soundReplaceRecord{Text: rec.Text, Start: rec.Start, End: rec.End, Audio: "", ActualStart: 0, ActualEnd: 0})
+		}
+	}
+	jobGen["records"] = genRecords
+	job["SoundGenerate"] = jobGen
+	if err := saveSoundReplaceProgress(task.ID, domain.TaskStatusRunning, job, nil, ""); err != nil {
+		return err
+	}
+
+	serverKey := asString(cfg.SoundGenerate["ttsServerKey"])
+	if strings.Contains(strings.ToLower(asString(cfg.SoundGenerate["type"])), "clone") {
+		serverKey = asString(cfg.SoundGenerate["cloneServerKey"])
+	}
+	if serverKey == "" {
+		return fmt.Errorf("soundGenerate server key is required")
+	}
+	server, err := startEasyServerByKey(serverKey)
+	if err != nil {
+		return err
+	}
+	registerTaskServer(task.ID, server)
+	defer func() {
+		_ = server.Stop()
+		unregisterTaskServer(task.ID)
+	}()
+
+	generatedWavs := make([]string, 0, len(genRecords))
+	for i, rec := range genRecords {
+		if strings.TrimSpace(rec.Audio) != "" {
+			continue
+		}
+		aligned := filepath.Join(persistDir, fmt.Sprintf("sound_replace_%d_seg_%d.wav", stamp, i))
+		targetMs := rec.End - rec.Start
+		if targetMs <= 0 {
+			targetMs = 1
+		}
+
+		text := strings.TrimSpace(rec.Text)
+		if text == "" {
+			if err := createSilenceAudio(aligned, targetMs); err != nil {
+				return err
+			}
+		} else {
+			rec.Text = text
+			rawOutput := filepath.Join(persistDir, fmt.Sprintf("sound_replace_%d_seg_%d_raw.wav", stamp, i))
+			if err := generateSpeechForRecord(task.ID, i, rec, cfg.SoundGenerate, server, rawOutput); err != nil {
+				if err := createSilenceAudio(aligned, targetMs); err != nil {
+					return fmt.Errorf("segment %d generate failed: %v", i, err)
+				}
+			} else if err := alignAudioDuration(rawOutput, aligned, targetMs); err != nil {
+				if err := createSilenceAudio(aligned, targetMs); err != nil {
+					return err
+				}
+			}
+		}
+
+		rec.Audio = aligned
+		rec.ActualStart = rec.Start
+		rec.ActualEnd = rec.End
+		generatedWavs = append(generatedWavs, aligned)
+		jobGen["records"] = genRecords
+		job["SoundGenerate"] = jobGen
+		if err := saveSoundReplaceProgress(task.ID, domain.TaskStatusRunning, job, nil, ""); err != nil {
+			return err
+		}
+	}
+
+	jobGen["status"] = "success"
+	job["SoundGenerate"] = jobGen
+	job["step"] = "Combine"
+	jobCombine := asMap(job["Combine"])
+	jobCombine["status"] = "running"
+	job["Combine"] = jobCombine
+	if err := saveSoundReplaceProgress(task.ID, domain.TaskStatusRunning, job, nil, ""); err != nil {
+		return err
+	}
+
+	concatFiles := make([]string, 0, len(genRecords)*2)
+	cursor := int64(0)
+	for i, rec := range genRecords {
+		if rec.Start > cursor {
+			silence := filepath.Join(persistDir, fmt.Sprintf("sound_replace_%d_silence_%d.wav", stamp, i))
+			if err := createSilenceAudio(silence, rec.Start-cursor); err != nil {
+				return err
+			}
+			concatFiles = append(concatFiles, silence)
+		}
+		concatFiles = append(concatFiles, rec.Audio)
+		cursor = rec.End
+	}
+	if endMs := toInt64(asMap(job["SoundAsr"])["duration"]); endMs > cursor {
+		silence := filepath.Join(persistDir, fmt.Sprintf("sound_replace_%d_silence_end.wav", stamp))
+		if err := createSilenceAudio(silence, endMs-cursor); err != nil {
+			return err
+		}
+		concatFiles = append(concatFiles, silence)
+	}
+
+	combinedWav := filepath.Join(persistDir, fmt.Sprintf("sound_replace_%d_combined.wav", stamp))
+	if err := ffmpegConcatAudio(concatFiles, combinedWav); err != nil {
+		return err
+	}
+	combinedMp3 := filepath.Join(persistDir, fmt.Sprintf("sound_replace_%d_combined.mp3", stamp))
+	if err := ffmpegEncodeMp3(combinedWav, combinedMp3); err != nil {
+		return err
+	}
+	videoOutput := filepath.Join(persistDir, fmt.Sprintf("sound_replace_%d_output.mp4", stamp))
+	if err := ffmpegReplaceVideoAudio(cfg.Video, combinedMp3, videoOutput); err != nil {
+		return err
+	}
+
+	jobCombine["status"] = "success"
+	jobCombine["audio"] = combinedMp3
+	jobCombine["file"] = videoOutput
+	job["Combine"] = jobCombine
+	job["step"] = "End"
+	combineConfirm := asMap(job["CombineConfirm"])
+	combineConfirm["status"] = "success"
+	job["CombineConfirm"] = combineConfirm
+
+	result := map[string]any{
+		"url":     videoOutput,
+		"audio":   combinedMp3,
+		"records": genRecords,
+	}
+	return saveSoundReplaceProgress(task.ID, domain.TaskStatusSuccess, job, result, "")
+}
+
 func saveSoundReplaceProgress(taskID int64, status string, jobResult map[string]any, result map[string]any, statusMsg string) error {
 	jobRaw, err := json.Marshal(jobResult)
 	if err != nil {
@@ -211,6 +374,21 @@ func parseAsrRecords(asrData map[string]any) ([]*soundReplaceRecord, error) {
 	return records, nil
 }
 
+func parseSoundReplaceRecords(v any) ([]*soundReplaceRecord, error) {
+	if v == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var records []*soundReplaceRecord
+	if err := json.Unmarshal(raw, &records); err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
 func generateSpeechForRecord(taskID int64, idx int, rec *soundReplaceRecord, soundGenerate map[string]any, server *easyserver.EasyServer, outputPath string) error {
 	generateType := strings.ToLower(asString(soundGenerate["type"]))
 	param := asMap(soundGenerate["ttsParam"])
@@ -272,6 +450,14 @@ func ffmpegExtractAudio(video, output string) error {
 
 func ffmpegEncodeMp3(input, output string) error {
 	return runCommand(GetFFmpegPath(), "-y", "-i", input, "-codec:a", "libmp3lame", "-q:a", "2", output)
+}
+
+func createSilenceAudio(output string, durationMs int64) error {
+	if durationMs <= 0 {
+		durationMs = 1
+	}
+	durSec := fmt.Sprintf("%.3f", float64(durationMs)/1000.0)
+	return runCommand(GetFFmpegPath(), "-y", "-f", "lavfi", "-i", "anullsrc=r=16000:cl=mono", "-t", durSec, "-acodec", "pcm_s16le", output)
 }
 
 func ffmpegConcatAudio(files []string, output string) error {
