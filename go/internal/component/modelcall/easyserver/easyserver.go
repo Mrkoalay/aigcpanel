@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/domain"
+	"xiacutai-server/internal/utils"
 )
 
 // EasyServer 表示一个 EasyServer 实例，用于管理本地 AI 模型服务
@@ -217,11 +219,25 @@ func (es *EasyServer) CallFunc(
 // prepareConfigJson creates a temporary config JSON file
 func (es *EasyServer) prepareConfigJson(configData map[string]interface{}) (string, error) {
 	// Create a temporary file
-	tmpFile, err := ioutil.TempFile("", "easyserver-config-*.json")
+	// 2. 生成唯一文件名（比时间戳更安全）
+	fileName := fmt.Sprintf("easyserver-config-%d-%d.json",
+		time.Now().UnixNano(),
+		rand.Intn(1000000),
+	)
+
+	filePath := filepath.Join(utils.JsonDir, fileName)
+	// 3. 创建文件
+	file, err := os.Create(filePath)
 	if err != nil {
-		return "", errs.New(fmt.Sprintf("failed to create temp file: %v", err))
+		return "", errs.New(fmt.Sprintf("failed to create file: %v", err))
 	}
-	defer tmpFile.Close()
+	defer file.Close()
+
+	/*	tmpFile, err := ioutil.TempFile("", "easyserver-config-*.json")
+		if err != nil {
+			return "", errs.New(fmt.Sprintf("failed to create temp file: %v", err))
+		}
+		defer tmpFile.Close()*/
 
 	// Marshal config data to JSON
 	configBytes, err := json.Marshal(configData)
@@ -230,12 +246,12 @@ func (es *EasyServer) prepareConfigJson(configData map[string]interface{}) (stri
 	}
 
 	// Write to file
-	_, err = tmpFile.Write(configBytes)
+	_, err = file.Write(configBytes)
 	if err != nil {
 		return "", errs.New(fmt.Sprintf("failed to write config data: %v", err))
 	}
 
-	return tmpFile.Name(), nil
+	return file.Name(), nil
 }
 
 // prepareEnvironment prepares environment variables

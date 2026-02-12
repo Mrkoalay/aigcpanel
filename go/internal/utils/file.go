@@ -14,6 +14,7 @@ var DataDir string
 var RegistryFile string
 var SQLiteFile string
 var StorageDir string
+var JsonDir string
 
 func InitDirs() {
 
@@ -29,6 +30,18 @@ func InitDirs() {
 	RegistryFile = filepath.Join(DataDir, "models.json")
 	SQLiteFile = filepath.Join(DataDir, "xiacutai.db")
 	StorageDir = filepath.Join(DataDir, "storage")
+	JsonDir = filepath.Join(DataDir, "json")
+
+	// ===== 创建目录 =====
+	mustMkdir(DataDir)
+	mustMkdir(StorageDir)
+	mustMkdir(JsonDir)
+}
+func mustMkdir(dir string) {
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create dir %s: %v", dir, err))
+	}
 }
 
 // 获取程序运行目录

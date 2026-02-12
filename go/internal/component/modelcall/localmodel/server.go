@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"xiacutai-server/internal/component/errs"
 )
 
 // ServerManager manages local AI models
@@ -28,13 +29,13 @@ func NewServerManager() *ServerManager {
 func (sm *ServerManager) LoadServerConfig(configPath string) (*ServerConfig, error) {
 	content, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		return nil, errs.New("failed to read config file: %v", err)
+		return nil, errs.New(fmt.Sprintf("failed to read config file: %v", err))
 	}
 
 	var config ServerConfig
 	err = json.Unmarshal(content, &config)
 	if err != nil {
-		return nil, errs.New("failed to parse config file: %v", err)
+		return nil, errs.New(fmt.Sprintf("failed to parse config file: %v", err))
 	}
 
 	return &config, nil
@@ -51,7 +52,7 @@ func (sm *ServerManager) AddServer(config *ServerConfig, localPath string) error
 	// Check if server already exists
 	for _, server := range sm.servers {
 		if server.Key == key {
-			return errs.New("server with key %s already exists", key)
+			return errs.New(fmt.Sprintf("server with key %s already exists", key))
 		}
 	}
 
@@ -154,7 +155,7 @@ func (sm *ServerManager) StartServer(key string) error {
 		}
 	}
 
-	return errs.New("server with key %s not found", key)
+	return errs.New(fmt.Sprintf("server with key %s not found", key))
 }
 
 // StopServer stops a server
@@ -185,7 +186,7 @@ func (sm *ServerManager) StopServer(key string) error {
 		}
 	}
 
-	return errs.New("server with key %s not found", key)
+	return errs.New(fmt.Sprintf("server with key %s not found", key))
 }
 
 // ServerInfo returns information about a server
@@ -214,7 +215,7 @@ func (sm *ServerManager) ServerInfo(key string) (*ServerInfo, error) {
 		}
 	}
 
-	return nil, errs.New("server with key %s not found", key)
+	return nil, errs.New(fmt.Sprintf("server with key %s not found", key))
 }
 
 // PingServer checks if a server is running
@@ -232,7 +233,7 @@ func (sm *ServerManager) PingServer(key string) (bool, error) {
 		}
 	}
 
-	return false, errs.New("server with key %s not found", key)
+	return false, errs.New(fmt.Sprintf("server with key %s not found", key))
 }
 
 // CallFunction calls a function on a server
@@ -242,7 +243,7 @@ func (sm *ServerManager) CallFunction(key string, function string, data ServerFu
 	sm.mutex.RUnlock()
 
 	if server == nil {
-		return nil, errs.New("server with key %s not found", key)
+		return nil, errs.New(fmt.Sprintf("server with key %s not found", key))
 	}
 
 	if server.Status != ServerRunning {
@@ -259,7 +260,7 @@ func (sm *ServerManager) CallFunction(key string, function string, data ServerFu
 	}
 
 	if !supported {
-		return nil, errs.New("function %s is not supported by this server", function)
+		return nil, errs.New(fmt.Sprintf("function %s is not supported by this server", function))
 	}
 
 	// Handle different functions
@@ -273,7 +274,7 @@ func (sm *ServerManager) CallFunction(key string, function string, data ServerFu
 	case "asr":
 		return sm.callAsr(server, data)
 	default:
-		return nil, errs.New("function %s is not implemented", function)
+		return nil, errs.New(fmt.Sprintf("function %s is not implemented", function))
 	}
 }
 
@@ -307,20 +308,20 @@ func (sm *ServerManager) callSoundTts(server *ServerRecord, data ServerFunctionD
 	// Prepare config JSON file
 	configPath, err := sm.prepareConfigJson(configMap)
 	if err != nil {
-		return nil, errs.New("failed to prepare config: %v", err)
+		return nil, errs.New(fmt.Sprintf("failed to prepare config: %v", err))
 	}
 	defer os.Remove(configPath)
 
 	// Execute model process
 	cmd, err := sm.executeModelProcess(server, configPath)
 	if err != nil {
-		return nil, errs.New("failed to execute model process: %v", err)
+		return nil, errs.New(fmt.Sprintf("failed to execute model process: %v", err))
 	}
 
 	// Wait for completion and get result
 	err = cmd.Wait()
 	if err != nil {
-		return nil, errs.New("model process failed: %v", err)
+		return nil, errs.New(fmt.Sprintf("model process failed: %v", err))
 	}
 
 	return &TaskResult{
@@ -357,9 +358,9 @@ func (sm *ServerManager) callSoundClone(server *ServerRecord, data ServerFunctio
 		Code: 0,
 		Msg:  "ok",
 		Data: map[string]interface{}{
-			"type": "success",
+			"type":  "success",
 			"start": time.Now().Unix(),
-			"end": time.Now().Unix() + 10, // Simulate 10 seconds processing
+			"end":   time.Now().Unix() + 10, // Simulate 10 seconds processing
 			"data": map[string]interface{}{
 				"url": "/path/to/generated/clone.wav",
 			},
@@ -395,9 +396,9 @@ func (sm *ServerManager) callVideoGen(server *ServerRecord, data ServerFunctionD
 		Code: 0,
 		Msg:  "ok",
 		Data: map[string]interface{}{
-			"type": "success",
+			"type":  "success",
 			"start": time.Now().Unix(),
-			"end": time.Now().Unix() + 30, // Simulate 30 seconds processing
+			"end":   time.Now().Unix() + 30, // Simulate 30 seconds processing
 			"data": map[string]interface{}{
 				"url": "/path/to/generated/video.mp4",
 			},
@@ -431,9 +432,9 @@ func (sm *ServerManager) callAsr(server *ServerRecord, data ServerFunctionDataTy
 		Code: 0,
 		Msg:  "ok",
 		Data: map[string]interface{}{
-			"type": "success",
+			"type":  "success",
 			"start": time.Now().Unix(),
-			"end": time.Now().Unix() + 5, // Simulate 5 seconds processing
+			"end":   time.Now().Unix() + 5, // Simulate 5 seconds processing
 			"data": map[string]interface{}{
 				"text": "Recognized speech text would be here",
 			},
@@ -448,20 +449,20 @@ func (sm *ServerManager) prepareConfigJson(configData map[string]interface{}) (s
 	// Create a temporary file
 	tmpFile, err := ioutil.TempFile("", "model-config-*.json")
 	if err != nil {
-		return "", errs.New("failed to create temp file: %v", err)
+		return "", errs.New(fmt.Sprintf("failed to create temp file: %v", err))
 	}
 	defer tmpFile.Close()
 
 	// Marshal config data to JSON
 	configBytes, err := json.Marshal(configData)
 	if err != nil {
-		return "", errs.New("failed to marshal config data: %v", err)
+		return "", errs.New(fmt.Sprintf("failed to marshal config data: %v", err))
 	}
 
 	// Write to file
 	_, err = tmpFile.Write(configBytes)
 	if err != nil {
-		return "", errs.New("failed to write config data: %v", err)
+		return "", errs.New(fmt.Sprintf("failed to write config data: %v", err))
 	}
 
 	return tmpFile.Name(), nil
