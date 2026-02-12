@@ -145,9 +145,9 @@ func (es *EasyServer) CallFunc(
 	es.IsRunning = true
 	resultData["start"] = time.Now().Unix()
 
-	defer func() {
-		es.IsRunning = false
-	}()
+	//defer func() {
+	//	es.IsRunning = false
+	//}()
 
 	// In a real implementation, you would send "taskRunning" event here
 	fmt.Printf("Task running: %s\n", data.ID)
@@ -214,6 +214,33 @@ func (es *EasyServer) CallFunc(
 		Msg:  "ok",
 		Data: resultData,
 	}, nil
+}
+func (es *EasyServer) enqueueTask(config map[string]interface{}) (string, error) {
+
+	queueDir := filepath.Join(es.ServerInfo.LocalPath, "algorithms", "task_queue")
+	if err := os.MkdirAll(queueDir, 0755); err != nil {
+		return "", err
+	}
+
+	ts := time.Now().UnixMilli()
+	filename := fmt.Sprintf("%d.queue.json", ts)
+
+	tmp := filepath.Join(queueDir, filename+".tmp")
+	final := filepath.Join(queueDir, filename)
+
+	data, _ := json.Marshal(config)
+
+	// 写临时文件
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return "", err
+	}
+
+	// 原子重命名（防止 python 读半文件）
+	if err := os.Rename(tmp, final); err != nil {
+		return "", err
+	}
+
+	return final, nil
 }
 
 // prepareConfigJson creates a temporary config JSON file

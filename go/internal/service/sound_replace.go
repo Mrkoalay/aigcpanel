@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -460,23 +459,97 @@ func createSilenceAudio(output string, durationMs int64) error {
 	durSec := fmt.Sprintf("%.3f", float64(durationMs)/1000.0)
 	return runCommand(GetFFmpegPath(), "-y", "-f", "lavfi", "-i", "anullsrc=r=16000:cl=mono", "-t", durSec, "-acodec", "pcm_s16le", output)
 }
+func CreateSilenceAudio(output string, durationMs int64) error {
 
-func ffmpegConcatAudio(files []string, output string) error {
-	if len(files) == 0 {
-		return errs.New("no audio files to concat")
+	return createSilenceAudio(output, durationMs)
+}
+
+func ffmpegConcatAudio(inputs []string, output string) error {
+	if len(inputs) == 0 {
+		return fmt.Errorf("no audio input")
 	}
-	listFile := filepath.Join(filepath.Dir(output), "concat.txt")
-	f, err := os.Create(listFile)
-	if err != nil {
-		return err
+
+	// 1. 构建 -i 参数
+	args := []string{"-y"}
+	for _, in := range inputs {
+		args = append(args, "-i", in)
 	}
-	w := bufio.NewWriter(f)
-	for _, file := range files {
-		_, _ = w.WriteString("file '" + strings.ReplaceAll(file, "'", "'\\''") + "'\n")
+
+	// 2. 构建 filter_complex
+	// [0:a][1:a][2:a]concat=n=3:v=0:a=1[out]
+	var filter strings.Builder
+	for i := range inputs {
+		filter.WriteString(fmt.Sprintf("[%d:a]", i))
 	}
-	_ = w.Flush()
-	_ = f.Close()
-	return runCommand("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-acodec", "pcm_s16le", output)
+	filter.WriteString(fmt.Sprintf("concat=n=%d:v=0:a=1[out]", len(inputs)))
+
+	args = append(args,
+		"-filter_complex", filter.String(),
+		"-map", "[out]",
+		"-acodec", "pcm_s16le",
+		output,
+	)
+
+	return runCommand(GetFFmpegPath(), args...)
+	//return runCommand("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listFile, "-acodec", "pcm_s16le", output)
+}
+func FfmpegConcatAudio(inputs []string, output string) error {
+
+	if len(inputs) == 0 {
+		return fmt.Errorf("no audio input")
+	}
+
+	// 1. 构建 -i 参数
+	args := []string{"-y"}
+	for _, in := range inputs {
+		args = append(args, "-i", in)
+	}
+
+	// 2. 构建 filter_complex
+	// [0:a][1:a][2:a]concat=n=3:v=0:a=1[out]
+	var filter strings.Builder
+	for i := range inputs {
+		filter.WriteString(fmt.Sprintf("[%d:a]", i))
+	}
+	filter.WriteString(fmt.Sprintf("concat=n=%d:v=0:a=1[out]", len(inputs)))
+
+	args = append(args,
+		"-filter_complex", filter.String(),
+		"-map", "[out]",
+		"-acodec", "pcm_s16le",
+		output,
+	)
+
+	return runCommand("ffmpeg", args...)
+}
+func FfmpegConcatAudio2(inputs []string, output string) error {
+
+	if len(inputs) == 0 {
+		return fmt.Errorf("no audio input")
+	}
+
+	// 1. 构建 -i 参数
+	args := []string{"-y"}
+	for _, in := range inputs {
+		args = append(args, "-i", in)
+	}
+
+	// 2. 构建 filter_complex
+	// [0:a][1:a][2:a]concat=n=3:v=0:a=1[out]
+	var filter strings.Builder
+	for i := range inputs {
+		filter.WriteString(fmt.Sprintf("[%d:a]", i))
+	}
+	filter.WriteString(fmt.Sprintf("concat=n=%d:v=0:a=1[out]", len(inputs)))
+
+	args = append(args,
+		"-filter_complex", filter.String(),
+		"-map", "[out]",
+		"-acodec", "pcm_s16le",
+		output,
+	)
+
+	return ffmpegConcatAudio(inputs, output)
 }
 
 func ffmpegReplaceVideoAudio(video, audio, output string) error {
@@ -496,6 +569,10 @@ func ffprobeDurationMs(file string) (int64, error) {
 }
 
 func runCommand(cmd string, args ...string) error {
+	// ===== 1. 打印完整命令 =====
+	full := cmd + " " + strings.Join(args, " ")
+	fmt.Printf("\n[CMD] %s\n", full)
+
 	out, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		return errs.New(fmt.Sprintf("%s failed: %w, output: %s", cmd, err, string(out)))
