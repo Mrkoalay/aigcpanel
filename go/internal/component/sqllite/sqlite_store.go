@@ -61,6 +61,7 @@ func (s *SQLiteStore) migrate() error {
 	return s.db.AutoMigrate(
 		&domain.DataTaskModel{},
 		&domain.DataStorageModel{}, // ⭐ 新表
+		&domain.DataVideoTemplateModel{},
 	)
 }
 
