@@ -12,16 +12,19 @@ import (
 )
 
 type taskCreateRequest struct {
-	Text          string                 `json:"text"`
-	Type          string                 `json:"type"` // 类型
-	ServerKey     string                 `json:"serverKey"`
-	Param         map[string]any         `json:"param"`
-	SoundAsr      map[string]any         `json:"soundAsr"`
-	SoundGenerate map[string]any         `json:"soundGenerate"`
-	Extra         map[string]interface{} `json:"-"`
-	PromptId      int64                  `json:"promptId"` // 声音克隆-声音ID
-	Audio         string                 `json:"audio"`    // 语音转文字-声音文件
-	Video         string                 `json:"video"`    // 声音替换-视频文件
+	Text              string                 `json:"text"`
+	Type              string                 `json:"type"` // 类型
+	ServerKey         string                 `json:"serverKey"`
+	VideoTemplateId   int64                  `json:"videoTemplateId"`
+	VideoTemplateName string                 `json:"videoTemplateName"`
+	VideoTemplateUrl  string                 `json:"videoTemplateUrl"`
+	Param             map[string]any         `json:"param"`
+	SoundAsr          map[string]any         `json:"soundAsr"`
+	SoundGenerate     map[string]any         `json:"soundGenerate"`
+	Extra             map[string]interface{} `json:"-"`
+	PromptId          int64                  `json:"promptId"` // 声音克隆-声音ID
+	Audio             string                 `json:"audio"`    // 语音转文字-声音文件
+	Video             string                 `json:"video"`    // 声音替换-视频文件
 }
 type taskOperateRequest struct {
 	ID int64 `json:"id"`
@@ -41,6 +44,7 @@ var TypeBizMap = map[string]string{
 	"soundClone":   "SoundGenerate",
 	"soundAsr":     "SoundAsr",
 	"videoGen":     "VideoGen",
+	"videoGenFlow": "VideoGenFlow",
 	"soundReplace": "SoundReplace",
 }
 
@@ -103,6 +107,46 @@ func DataTaskCreate(ctx *gin.Context) {
 			"video":     req.Video,
 			"audio":     req.Audio,
 			"param":     req.Param,
+		}
+	case domain.FunctionVideoGenFlow:
+
+		cloneServerKey, _ := req.SoundGenerate["cloneServerKey"].(string)
+		ttsServerKey, _ := req.SoundGenerate["ttsServerKey"].(string)
+
+		soundGenerateServerKey := cloneServerKey
+		if soundGenerateServerKey == "" {
+			soundGenerateServerKey = ttsServerKey
+		}
+		if soundGenerateServerKey != "" {
+			soundGenerateModel, err := service.Model.Get(soundGenerateServerKey)
+			if err != nil {
+				Err(ctx, err)
+				return
+			}
+			req.SoundGenerate["serverName"] = soundGenerateModel.Name
+			req.SoundGenerate["serverTitle"] = soundGenerateModel.Title
+			req.SoundGenerate["serverVersion"] = soundGenerateModel.Version
+		}
+
+		promptId, ok := req.SoundGenerate["promptId"].(float64)
+		if ok {
+			storageModel, err := service.DataStorage.GetStorage(int64(promptId))
+			if err == nil {
+				var promptContent PromptContent
+				json.Unmarshal([]byte(storageModel.Content), &promptContent)
+				req.SoundGenerate["promptTitle"] = storageModel.Title
+				req.SoundGenerate["promptUrl"] = promptContent.URL
+				req.SoundGenerate["promptText"] = promptContent.PromptText
+			}
+		}
+
+		modelConfig = map[string]any{
+			"type":              typeStr,
+			"videoTemplateId":   req.VideoTemplateId,
+			"videoTemplateName": req.VideoTemplateName,
+			"videoTemplateUrl":  req.VideoTemplateUrl,
+			"soundGenerate":     req.SoundGenerate,
+			"text":              req.Text,
 		}
 	case domain.FunctionSoundReplace:
 
