@@ -10,6 +10,7 @@ const (
 
 const (
 	FunctionVideoGen     string = "videoGen"     // 视频生成功能
+	FunctionVideoGenFlow string = "videoGenFlow" // 数字人生成工作流
 	FunctionSoundReplace string = "soundReplace" // 声音替换功能
 	FunctionSoundTts     string = "soundTts"     // 语音合成功能
 	FunctionSoundClone   string = "soundClone"   // 语音克隆功能

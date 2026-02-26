@@ -20,21 +20,24 @@ import (
 var errTaskRetry = errors.New("task requires retry")
 
 type taskConfig struct {
-	Type           string                 `json:"type"`
-	TtsServerKey   string                 `json:"ttsServerKey"`
-	TtsParam       map[string]any         `json:"ttsParam"`
-	CloneServerKey string                 `json:"cloneServerKey"`
-	ServerKey      string                 `json:"serverKey"`
-	CloneParam     map[string]any         `json:"cloneParam"`
-	PromptURL      string                 `json:"promptUrl"`
-	PromptText     string                 `json:"promptText"`
-	Video          string                 `json:"video"`
-	VideoParam     map[string]any         `json:"param"`
-	SoundAsr       map[string]any         `json:"soundAsr"`
-	SoundGenerate  map[string]any         `json:"soundGenerate"`
-	Audio          string                 `json:"audio"`
-	Text           string                 `json:"text"`
-	Extra          map[string]interface{} `json:"-"`
+	Type              string                 `json:"type"`
+	TtsServerKey      string                 `json:"ttsServerKey"`
+	TtsParam          map[string]any         `json:"ttsParam"`
+	CloneServerKey    string                 `json:"cloneServerKey"`
+	ServerKey         string                 `json:"serverKey"`
+	CloneParam        map[string]any         `json:"cloneParam"`
+	PromptURL         string                 `json:"promptUrl"`
+	PromptText        string                 `json:"promptText"`
+	Video             string                 `json:"video"`
+	VideoParam        map[string]any         `json:"param"`
+	SoundAsr          map[string]any         `json:"soundAsr"`
+	SoundGenerate     map[string]any         `json:"soundGenerate"`
+	Audio             string                 `json:"audio"`
+	Text              string                 `json:"text"`
+	VideoTemplateID   int64                  `json:"videoTemplateId"`
+	VideoTemplateName string                 `json:"videoTemplateName"`
+	VideoTemplateURL  string                 `json:"videoTemplateUrl"`
+	Extra             map[string]interface{} `json:"-"`
 }
 
 func StartTaskScheduler(ctx context.Context) {
@@ -107,6 +110,12 @@ func handleSoundTask(task domain.DataTaskModel) error {
 	}
 	if cfg.Type == domain.FunctionSoundReplace {
 		if runErr := runSoundReplaceTask(task, cfg); runErr != nil {
+			return setTaskFailed(task.ID, runErr)
+		}
+		return nil
+	}
+	if cfg.Type == domain.FunctionVideoGenFlow {
+		if runErr := runVideoGenFlowTask(task, cfg); runErr != nil {
 			return setTaskFailed(task.ID, runErr)
 		}
 		return nil
