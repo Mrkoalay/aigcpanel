@@ -24,7 +24,7 @@ func runVideoGenFlowTask(task domain.DataTaskModel, cfg *taskConfig) error {
 		return err
 	}
 
-	videoServerKey := cfg.ServerKey
+	videoServerKey := task.ServerName + "|" + task.ServerVersion
 	if videoServerKey == "" {
 		return errs.New("serverKey is required")
 	}

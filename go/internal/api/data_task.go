@@ -12,19 +12,17 @@ import (
 )
 
 type taskCreateRequest struct {
-	Text              string                 `json:"text"`
-	Type              string                 `json:"type"` // 类型
-	ServerKey         string                 `json:"serverKey"`
-	VideoTemplateId   int64                  `json:"videoTemplateId"`
-	VideoTemplateName string                 `json:"videoTemplateName"`
-	VideoTemplateUrl  string                 `json:"videoTemplateUrl"`
-	Param             map[string]any         `json:"param"`
-	SoundAsr          map[string]any         `json:"soundAsr"`
-	SoundGenerate     map[string]any         `json:"soundGenerate"`
-	Extra             map[string]interface{} `json:"-"`
-	PromptId          int64                  `json:"promptId"` // 声音克隆-声音ID
-	Audio             string                 `json:"audio"`    // 语音转文字-声音文件
-	Video             string                 `json:"video"`    // 声音替换-视频文件
+	Text            string                 `json:"text"`
+	Type            string                 `json:"type"` // 类型
+	ServerKey       string                 `json:"serverKey"`
+	VideoTemplateId int64                  `json:"videoTemplateId"` // 数字人模板ID
+	Param           map[string]any         `json:"param"`
+	SoundAsr        map[string]any         `json:"soundAsr"`
+	SoundGenerate   map[string]any         `json:"soundGenerate"`
+	Extra           map[string]interface{} `json:"-"`
+	PromptId        int64                  `json:"promptId"` // 声音克隆-声音ID
+	Audio           string                 `json:"audio"`    // 语音转文字-声音文件
+	Video           string                 `json:"video"`    // 声音替换-视频文件
 }
 type taskOperateRequest struct {
 	ID int64 `json:"id"`
@@ -139,12 +137,17 @@ func DataTaskCreate(ctx *gin.Context) {
 				req.SoundGenerate["promptText"] = promptContent.PromptText
 			}
 		}
-
+		videoTemplateId := req.VideoTemplateId
+		videoTemplate, err := service.DataVideoTemplate.Get(int64(videoTemplateId))
+		if err != nil {
+			Err(ctx, err)
+			return
+		}
 		modelConfig = map[string]any{
 			"type":              typeStr,
 			"videoTemplateId":   req.VideoTemplateId,
-			"videoTemplateName": req.VideoTemplateName,
-			"videoTemplateUrl":  req.VideoTemplateUrl,
+			"videoTemplateName": videoTemplate.Name,
+			"videoTemplateUrl":  videoTemplate.Video,
 			"soundGenerate":     req.SoundGenerate,
 			"text":              req.Text,
 		}

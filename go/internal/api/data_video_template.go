@@ -13,8 +13,6 @@ import (
 type dataVideoTemplateCreateRequest struct {
 	Name     string `json:"name"`
 	FilePath string `json:"filePath"`
-	Video    string `json:"video"`
-	Info     string `json:"info"`
 }
 
 type dataVideoTemplateListRequest struct {
@@ -23,11 +21,8 @@ type dataVideoTemplateListRequest struct {
 }
 
 type dataVideoTemplateUpdateRequest struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	FilePath string `json:"filePath"`
-	Video    string `json:"video"`
-	Info     string `json:"info"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 func DataVideoTemplateCreate(ctx *gin.Context) {
@@ -37,7 +32,7 @@ func DataVideoTemplateCreate(ctx *gin.Context) {
 		return
 	}
 
-	video, info, err := resolveVideoAndInfo(req.FilePath, req.Video, req.Info)
+	info, err := resolveVideoAndInfo(req.FilePath)
 	if err != nil {
 		Err(ctx, err)
 		return
@@ -45,7 +40,7 @@ func DataVideoTemplateCreate(ctx *gin.Context) {
 
 	record := domain.DataVideoTemplateModel{
 		Name:  strings.TrimSpace(req.Name),
-		Video: video,
+		Video: req.FilePath,
 		Info:  info,
 	}
 	created, err := service.DataVideoTemplate.Create(record)
@@ -91,16 +86,6 @@ func DataVideoTemplateUpdate(ctx *gin.Context) {
 		"name": strings.TrimSpace(req.Name),
 	}
 
-	video, info, err := resolveVideoAndInfo(req.FilePath, req.Video, req.Info)
-	if err != nil {
-		Err(ctx, err)
-		return
-	}
-	if video != "" {
-		updates["video"] = video
-		updates["info"] = info
-	}
-
 	template, err := service.DataVideoTemplate.Update(req.ID, updates)
 	if err != nil {
 		Err(ctx, err)
@@ -129,22 +114,11 @@ func DataVideoTemplateDelete(ctx *gin.Context) {
 	OK(ctx, gin.H{"data": req.ID})
 }
 
-func resolveVideoAndInfo(filePath, video, fallbackInfo string) (string, string, error) {
-	video = strings.TrimSpace(video)
+func resolveVideoAndInfo(filePath string) (string, error) {
 	filePath = strings.TrimSpace(filePath)
-	if filePath != "" {
-		newPath, err := utils.CopyToStorage(filePath)
-		if err != nil {
-			return "", "", err
-		}
-		video = newPath
-	}
-	if video == "" {
-		return "", strings.TrimSpace(fallbackInfo), nil
-	}
-	info, err := utils.ProbeVideoInfo(video)
+	info, err := utils.ProbeVideoInfo(filePath)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	return video, info, nil
+	return info, nil
 }
