@@ -458,38 +458,47 @@ func cleanInvalid(reg *ModelRegistry) {
 ////////////////////////////////////////////////////////////
 
 func registerModel(info domain.LocalModelConfigInfo) error {
-
 	key := info.Name + "|" + info.Version
 	path := filepath.Clean(info.Path)
 
-	reg, err := loadRegistry()
-	if err != nil {
+	db := sqllite.GetSession()
+
+	// 只查这一条，不再 load 全表
+	var row domain.LocalModelRegistryModel
+	err := db.Where("key = ?", key).First(&row).Error
+
+	if err == nil {
+		// ---- 保留你原来的判断逻辑 ----
+		if filepath.Clean(row.LocalPath) == path {
+			log.Warn("重复注册模型", zap.String("key", key))
+			return errs.New("模型已存在")
+		}
+
+		log.Warn("模型路径更新",
+			zap.String("old", row.LocalPath),
+			zap.String("new", path),
+		)
+
+		// 你原来只更新 LocalPath + Config（语义保持一致）
+		configRaw, jerr := json.Marshal(info.Config)
+		if jerr != nil {
+			return jerr
+		}
+
+		return db.Model(&domain.LocalModelRegistryModel{}).
+			Where("key = ?", key).
+			Updates(map[string]any{
+				"local_path": path,
+				"config":     string(configRaw),
+			}).Error
+	}
+
+	if err != nil && err != gorm.ErrRecordNotFound {
 		return err
 	}
 
-	cleanInvalid(reg)
-
-	for i, r := range reg.Records {
-
-		if r.Key == key {
-
-			if filepath.Clean(r.LocalPath) == path {
-				log.Warn("重复注册模型", zap.String("key", key))
-				return errs.New("模型已存在")
-			}
-
-			log.Warn("模型路径更新",
-				zap.String("old", r.LocalPath),
-				zap.String("new", path),
-			)
-
-			reg.Records[i].LocalPath = path
-			reg.Records[i].Config = info.Config
-			return saveRegistry(reg)
-		}
-	}
-
-	reg.Records = append(reg.Records, ModelRecord{
+	// 不存在：新增（只插这一条）
+	rec := ModelRecord{
 		Key:       key,
 		Name:      info.Name,
 		Title:     info.Title,
@@ -501,46 +510,12 @@ func registerModel(info domain.LocalModelConfigInfo) error {
 		Settings:  info.Settings,
 		Setting:   info.Setting,
 		Config:    info.Config,
-	})
-
-	return saveRegistry(reg)
-}
-
-////////////////////////////////////////////////////////////
-// 启动时调用
-////////////////////////////////////////////////////////////
-
-func InitModelRegistry() {
-	reg, err := loadRegistry()
-	if err == nil && len(reg.Records) > 0 {
-		cleanInvalid(reg)
-		_ = saveRegistry(reg)
-		return
 	}
 
-	legacy, err := loadRegistryFromJSON()
+	newRow, err := convertRecordToDB(rec)
 	if err != nil {
-		return
+		return err
 	}
 
-	cleanInvalid(legacy)
-	_ = saveRegistry(legacy)
-}
-
-func loadRegistryFromJSON() (*ModelRegistry, error) {
-	if _, err := os.Stat(utils.RegistryFile); os.IsNotExist(err) {
-		return &ModelRegistry{Records: []ModelRecord{}}, nil
-	}
-
-	buf, err := os.ReadFile(utils.RegistryFile)
-	if err != nil {
-		return nil, err
-	}
-
-	var reg ModelRegistry
-	if err := json.Unmarshal(buf, &reg); err != nil {
-		return nil, err
-	}
-
-	return &reg, nil
+	return db.Create(&newRow).Error
 }

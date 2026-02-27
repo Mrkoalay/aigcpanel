@@ -12,7 +12,7 @@ func main() {
 
 	utils.InitDirs()
 	sqllite.Init()
-	service.InitModelRegistry()
+	//service.InitModelRegistry()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	service.StartTaskScheduler(ctx)

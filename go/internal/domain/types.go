@@ -87,6 +87,7 @@ type AppTemplate struct {
 
 type LocalModelConfigInfo struct {
 	Type              string         `json:"type"`
+	Key               string         `json:"key"`
 	Name              string         `json:"name"`
 	Version           string         `json:"version"`
 	ServerRequire     string         `json:"serverRequire"`
@@ -94,6 +95,7 @@ type LocalModelConfigInfo struct {
 	Description       string         `json:"description"`
 	DeviceDescription string         `json:"deviceDescription"`
 	Path              string         `json:"path"`
+	Url               string         `json:"url"`
 	PlatformName      string         `json:"platformName"`
 	PlatformArch      string         `json:"platformArch"`
 	Entry             string         `json:"entry"`

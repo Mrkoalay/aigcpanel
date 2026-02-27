@@ -5,6 +5,7 @@ type LocalModelRegistryModel struct {
 	Key       string `gorm:"column:key;type:text;uniqueIndex" json:"key"`
 	Name      string `gorm:"column:name;type:text" json:"name"`
 	Title     string `gorm:"column:title;type:text" json:"title"`
+	URL       string `gorm:"column:url;type:text" json:"url"`
 	Version   string `gorm:"column:version;type:text" json:"version"`
 	Type      string `gorm:"column:type;type:text" json:"type"`
 	AutoStart bool   `gorm:"column:autoStart" json:"autoStart"`

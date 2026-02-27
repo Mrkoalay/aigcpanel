@@ -8,6 +8,7 @@ func init() {
 	group := router.Group("/")
 	{
 		group.GET("/sys_config", api.SysConfig)
+		group.POST("/init", api.SysInit)
 
 	}
 }
