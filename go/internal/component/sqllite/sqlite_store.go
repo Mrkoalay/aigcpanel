@@ -62,6 +62,7 @@ func (s *SQLiteStore) migrate() error {
 		&domain.DataTaskModel{},
 		&domain.DataStorageModel{}, // ⭐ 新表
 		&domain.DataVideoTemplateModel{},
+		&domain.LocalModelRegistryModel{},
 	)
 }
 

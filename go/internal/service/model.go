@@ -8,8 +8,11 @@ import (
 	"strings"
 	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/component/log"
+	"xiacutai-server/internal/component/sqllite"
 	"xiacutai-server/internal/domain"
 	"xiacutai-server/internal/utils"
+
+	"gorm.io/gorm"
 )
 
 type model struct{}
@@ -321,39 +324,111 @@ type ModelRegistry struct {
 ////////////////////////////////////////////////////////////
 
 func loadRegistry() (*ModelRegistry, error) {
-
-	if _, err := os.Stat(utils.RegistryFile); os.IsNotExist(err) {
-		return &ModelRegistry{Records: []ModelRecord{}}, nil
-	}
-
-	buf, err := os.ReadFile(utils.RegistryFile)
-	if err != nil {
+	rows := make([]domain.LocalModelRegistryModel, 0)
+	if err := sqllite.GetSession().Order("id ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
-	var reg ModelRegistry
-	if err := json.Unmarshal(buf, &reg); err != nil {
-		return nil, err
+	records := make([]ModelRecord, 0, len(rows))
+	for _, row := range rows {
+		r, err := convertDBToRecord(row)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, r)
 	}
 
-	return &reg, nil
+	return &ModelRegistry{Records: records}, nil
 }
 
 func saveRegistry(reg *ModelRegistry) error {
+	return sqllite.GetSession().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("1 = 1").Delete(&domain.LocalModelRegistryModel{}).Error; err != nil {
+			return err
+		}
 
-	os.MkdirAll(filepath.Dir(utils.RegistryFile), 0755)
+		for _, r := range reg.Records {
+			row, err := convertRecordToDB(r)
+			if err != nil {
+				return err
+			}
+			if err := tx.Create(&row).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
 
-	f, err := os.Create(utils.RegistryFile)
+func convertRecordToDB(r ModelRecord) (domain.LocalModelRegistryModel, error) {
+	functionsRaw, err := json.Marshal(r.Functions)
 	if err != nil {
-		return err
+		return domain.LocalModelRegistryModel{}, err
 	}
-	defer f.Close()
+	settingsRaw, err := json.Marshal(r.Settings)
+	if err != nil {
+		return domain.LocalModelRegistryModel{}, err
+	}
+	settingRaw, err := json.Marshal(r.Setting)
+	if err != nil {
+		return domain.LocalModelRegistryModel{}, err
+	}
+	configRaw, err := json.Marshal(r.Config)
+	if err != nil {
+		return domain.LocalModelRegistryModel{}, err
+	}
 
-	encoder := json.NewEncoder(f)
-	encoder.SetIndent("", "  ")
-	encoder.SetEscapeHTML(false)
+	return domain.LocalModelRegistryModel{
+		Key:       r.Key,
+		Name:      r.Name,
+		Title:     r.Title,
+		Version:   r.Version,
+		Type:      r.Type,
+		AutoStart: r.AutoStart,
+		Functions: string(functionsRaw),
+		LocalPath: r.LocalPath,
+		Settings:  string(settingsRaw),
+		Setting:   string(settingRaw),
+		Config:    string(configRaw),
+	}, nil
+}
 
-	return encoder.Encode(reg)
+func convertDBToRecord(row domain.LocalModelRegistryModel) (ModelRecord, error) {
+	r := ModelRecord{
+		Key:       row.Key,
+		Name:      row.Name,
+		Title:     row.Title,
+		Version:   row.Version,
+		Type:      row.Type,
+		AutoStart: row.AutoStart,
+		LocalPath: row.LocalPath,
+	}
+
+	if row.Functions != "" {
+		if err := json.Unmarshal([]byte(row.Functions), &r.Functions); err != nil {
+			return ModelRecord{}, err
+		}
+	}
+
+	if row.Settings != "" {
+		if err := json.Unmarshal([]byte(row.Settings), &r.Settings); err != nil {
+			return ModelRecord{}, err
+		}
+	}
+
+	if row.Setting != "" {
+		if err := json.Unmarshal([]byte(row.Setting), &r.Setting); err != nil {
+			return ModelRecord{}, err
+		}
+	}
+
+	if row.Config != "" {
+		if err := json.Unmarshal([]byte(row.Config), &r.Config); err != nil {
+			return ModelRecord{}, err
+		}
+	}
+
+	return r, nil
 }
 
 ////////////////////////////////////////////////////////////
@@ -437,9 +512,35 @@ func registerModel(info domain.LocalModelConfigInfo) error {
 
 func InitModelRegistry() {
 	reg, err := loadRegistry()
+	if err == nil && len(reg.Records) > 0 {
+		cleanInvalid(reg)
+		_ = saveRegistry(reg)
+		return
+	}
+
+	legacy, err := loadRegistryFromJSON()
 	if err != nil {
 		return
 	}
-	cleanInvalid(reg)
-	saveRegistry(reg)
+
+	cleanInvalid(legacy)
+	_ = saveRegistry(legacy)
+}
+
+func loadRegistryFromJSON() (*ModelRegistry, error) {
+	if _, err := os.Stat(utils.RegistryFile); os.IsNotExist(err) {
+		return &ModelRegistry{Records: []ModelRecord{}}, nil
+	}
+
+	buf, err := os.ReadFile(utils.RegistryFile)
+	if err != nil {
+		return nil, err
+	}
+
+	var reg ModelRegistry
+	if err := json.Unmarshal(buf, &reg); err != nil {
+		return nil, err
+	}
+
+	return &reg, nil
 }
