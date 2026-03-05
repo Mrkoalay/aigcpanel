@@ -6,11 +6,13 @@ import (
 	"strconv"
 	"strings"
 	"xiacutai-server/internal/component/errs"
+	"xiacutai-server/internal/component/log"
 	"xiacutai-server/internal/domain"
 	"xiacutai-server/internal/service"
 	"xiacutai-server/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type storageCreateRequest struct {
@@ -75,21 +77,8 @@ func DataStorageSoundCreate(ctx *gin.Context) {
 		Err(ctx, err)
 		return
 	}
-	contentMap := map[string]any{
-		"url": newPath,
-	}
-	if strings.TrimSpace(req.PromptText) != "" {
-		contentMap["promptText"] = req.PromptText
-	} else {
-		promptText, err := service.RecognizeSoundPromptText(newPath)
-		if err != nil {
-			Err(ctx, err)
-			return
-		}
-		contentMap["promptText"] = promptText
-	}
-
-	contentRaw, err := json.Marshal(contentMap)
+	promptText := strings.TrimSpace(req.PromptText)
+	contentRaw, err := buildSoundPromptStorageContent(newPath, promptText, "")
 	if err != nil {
 		Err(ctx, err)
 		return
@@ -104,9 +93,52 @@ func DataStorageSoundCreate(ctx *gin.Context) {
 		Err(ctx, err)
 		return
 	}
+	if promptText == "" {
+		go recognizeAndUpdateSoundPrompt(created.ID, newPath)
+	}
 	OK(ctx, gin.H{
 		"data": created,
 	})
+}
+
+func buildSoundPromptStorageContent(url, promptText, asrError string) ([]byte, error) {
+	contentMap := map[string]any{
+		"url":        url,
+		"promptText": promptText,
+	}
+	if asrError != "" {
+		contentMap["asrStatus"] = "failed"
+		contentMap["asrError"] = asrError
+	} else if promptText == "" {
+		contentMap["asrStatus"] = "loading"
+	} else {
+		contentMap["asrStatus"] = "success"
+	}
+	return json.Marshal(contentMap)
+}
+
+func recognizeAndUpdateSoundPrompt(id int64, audioPath string) {
+	promptText, err := service.RecognizeSoundPromptText(audioPath)
+	if err != nil {
+		contentRaw, marshalErr := buildSoundPromptStorageContent(audioPath, "", err.Error())
+		if marshalErr != nil {
+			log.Error("音频ASR失败后更新状态时序列化内容失败", zap.Int64("id", id), zap.Error(marshalErr))
+			return
+		}
+		if _, updateErr := service.DataStorage.UpdateStorage(id, map[string]any{"content": string(contentRaw)}); updateErr != nil {
+			log.Error("音频ASR失败后更新存储记录失败", zap.Int64("id", id), zap.Error(updateErr), zap.Error(err))
+		}
+		return
+	}
+
+	contentRaw, err := buildSoundPromptStorageContent(audioPath, promptText, "")
+	if err != nil {
+		log.Error("音频ASR成功后序列化内容失败", zap.Int64("id", id), zap.Error(err))
+		return
+	}
+	if _, err = service.DataStorage.UpdateStorage(id, map[string]any{"content": string(contentRaw)}); err != nil {
+		log.Error("音频ASR成功后更新存储记录失败", zap.Int64("id", id), zap.Error(err))
+	}
 }
 
 func DataStorageUpdate(ctx *gin.Context) {
