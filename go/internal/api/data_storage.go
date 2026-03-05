@@ -76,11 +76,24 @@ func DataStorageSoundCreate(ctx *gin.Context) {
 		return
 	}
 	contentMap := map[string]any{
-		"url":        newPath,
-		"promptText": req.PromptText,
+		"url": newPath,
+	}
+	if strings.TrimSpace(req.PromptText) != "" {
+		contentMap["promptText"] = req.PromptText
+	} else {
+		promptText, err := service.RecognizeSoundPromptText(newPath)
+		if err != nil {
+			Err(ctx, err)
+			return
+		}
+		contentMap["promptText"] = promptText
 	}
 
 	contentRaw, err := json.Marshal(contentMap)
+	if err != nil {
+		Err(ctx, err)
+		return
+	}
 	record := domain.DataStorageModel{
 		Biz:     "SoundPrompt",
 		Title:   req.Title,
