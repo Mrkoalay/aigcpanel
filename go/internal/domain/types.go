@@ -99,6 +99,7 @@ type LocalModelConfigInfo struct {
 	PlatformName      string         `json:"platformName"`
 	PlatformArch      string         `json:"platformArch"`
 	Entry             string         `json:"entry"`
+	Status            string         `json:"status"` // 你可沿用：1未下载、2下载中、3已下载、4依赖安装中、5完成、-1失败
 	Functions         []string       `json:"functions"`
 	Settings          []any          `json:"settings"`
 	Setting           map[string]any `json:"setting"`

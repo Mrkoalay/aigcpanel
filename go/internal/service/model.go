@@ -67,6 +67,7 @@ func parseConfigToInfo(cfg map[string]any, parent string) domain.LocalModelConfi
 		Settings:          settings,
 		Setting:           setting,
 		Config:            cfg,
+		Status:            "3",
 	}
 }
 
@@ -224,6 +225,15 @@ func (s *model) ModelUpdateSetting(name, version string, newSetting map[string]a
 
 	return errs.New("模型不存在")
 }
+func (s *model) ModelUpdateStatus(key string, status int) error {
+	db := sqllite.GetSession()
+	return db.Model(&domain.LocalModelRegistryModel{}).
+		Where("key = ?", key).
+		Updates(map[string]any{
+			"status": status,
+		}).Error
+
+}
 
 func (s *model) ModelDelete(name string, version string) error {
 
@@ -300,11 +310,20 @@ func (s *model) Get(modelKey string) (*domain.LocalModelConfigInfo, error) {
 
 	return &modelConfigInfo, nil
 }
+func (s *model) GetByDB(modelKey string) (*domain.LocalModelRegistryModel, error) {
+	LocalModelRegistryModel := &domain.LocalModelRegistryModel{}
+	if err := sqllite.GetSession().Where("key=?", modelKey).Order("id ASC").Find(&LocalModelRegistryModel).Error; err != nil {
+		return nil, err
+	}
+
+	return LocalModelRegistryModel, nil
+}
 
 type ModelRecord struct {
 	Key       string         `json:"key"`
 	Name      string         `json:"name"`
 	Title     string         `json:"title"`
+	Status    string         `json:"status"`
 	Version   string         `json:"version"`
 	Type      string         `json:"type"`
 	AutoStart bool           `json:"autoStart"`
@@ -384,6 +403,7 @@ func convertRecordToDB(r ModelRecord) (domain.LocalModelRegistryModel, error) {
 		Title:     r.Title,
 		Version:   r.Version,
 		Type:      r.Type,
+		Status:    r.Status,
 		AutoStart: r.AutoStart,
 		Functions: string(functionsRaw),
 		LocalPath: r.LocalPath,
@@ -510,6 +530,7 @@ func registerModel(info domain.LocalModelConfigInfo) error {
 		Settings:  info.Settings,
 		Setting:   info.Setting,
 		Config:    info.Config,
+		Status:    info.Status,
 	}
 
 	newRow, err := convertRecordToDB(rec)
