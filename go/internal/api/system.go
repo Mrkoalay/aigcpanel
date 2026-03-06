@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -22,6 +23,7 @@ import (
 	"xiacutai-server/internal/component/log"
 	"xiacutai-server/internal/domain"
 	"xiacutai-server/internal/service"
+	"xiacutai-server/internal/utils"
 )
 
 type SysConfigResp struct {
@@ -279,12 +281,44 @@ type sysInitTask struct {
 	UpdatedAt time.Time                 `json:"updated_at"`
 	Models    map[string]*modelProgress `json:"models"`
 	Error     string                    `json:"error,omitempty"`
+	LogPath   string                    // ✅ 新增：日志路径
 }
 
 var (
 	initMu   sync.Mutex
 	initTask *sysInitTask
 )
+
+// 计算总进度：按模型 progress 平均
+func calcTotalProgress(models map[string]*modelProgress) int {
+	if len(models) == 0 {
+		return 0
+	}
+
+	sum := 0
+	n := 0
+	for _, mp := range models {
+		if mp == nil {
+			continue
+		}
+		p := mp.Progress
+		if p < 0 {
+			p = 0
+		}
+		if p > 100 {
+			p = 100
+		}
+		sum += p
+		n++
+	}
+
+	if n == 0 {
+		return 0
+	}
+
+	// 四舍五入
+	return int(math.Round(float64(sum) / float64(n)))
+}
 
 // GET /sys_init
 func SysInit(c *gin.Context) {
@@ -294,10 +328,16 @@ func SysInit(c *gin.Context) {
 	initMu.Lock()
 	if initTask != nil && initTask.Status == initRunning {
 		snap := snapshotInitLocked(initTask)
+		total := calcTotalProgress(initTask.Models)
 		initMu.Unlock()
 
-		info("已有任务在执行，返回进度", zap.Int("models", len(snap.Models)))
-		OK(c, gin.H{"running": true, "progress": snap})
+		info("并发触发：已存在任务，返回进度", zap.Int("models", len(snap.Models)))
+		OK(c, gin.H{
+			"running":        true,
+			"progress":       snap,
+			"total_progress": total,
+			"log_path":       initTask.LogPath, // ✅ 返回日志路径
+		})
 		return
 	}
 	initMu.Unlock()
@@ -322,13 +362,14 @@ func SysInit(c *gin.Context) {
 		return
 	}
 	info("准备初始化模型", zap.Int("count", len(registryModels)))
-
+	logPath := filepath.Join(utils.LogDir, "runtime.log")
 	// 4) 初始化任务并启动异步
 	task := &sysInitTask{
 		Status:    initRunning,
 		StartedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Models:    map[string]*modelProgress{},
+		LogPath:   logPath, // ✅ 保存日志路径
 	}
 
 	// ✅ 关键修复：创建 task 时先查 DB，把已就绪的直接标成“就绪”，不要“排队中”
@@ -362,8 +403,16 @@ func SysInit(c *gin.Context) {
 	if initTask != nil && initTask.Status == initRunning {
 		snap := snapshotInitLocked(initTask)
 		initMu.Unlock()
-		info("并发触发：已存在任务，返回进度", zap.Int("models", len(snap.Models)))
-		OK(c, gin.H{"running": true, "progress": snap})
+
+		total := calcTotalProgress(initTask.Models)
+
+		info("已有任务在执行，返回进度", zap.Int("models", len(snap.Models)))
+		OK(c, gin.H{
+			"running":        true,
+			"progress":       snap,
+			"total_progress": total,
+			"log_path":       initTask.LogPath, // ✅ 返回日志路径
+		})
 		return
 	}
 	initTask = task
@@ -372,7 +421,14 @@ func SysInit(c *gin.Context) {
 	info("初始化任务已创建，开始异步执行", zap.Int("models", len(task.Models)))
 	go runInit(registryModels)
 
-	OK(c, gin.H{"running": true, "progress": snapshotInit(task)})
+	total := calcTotalProgress(task.Models)
+
+	OK(c, gin.H{
+		"running":        true,
+		"progress_info":  snapshotInit(task),
+		"total_progress": total,
+		"log_path":       initTask.LogPath, // ✅ 返回日志路径
+	})
 }
 
 func runInit(models []domain.LocalModelRegistryModel) {

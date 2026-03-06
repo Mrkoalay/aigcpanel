@@ -11,6 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const TypeSoundClone = "soundClone"
+
 type taskCreateRequest struct {
 	Text            string                 `json:"text"`
 	Type            string                 `json:"type"` // 类型

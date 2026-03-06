@@ -6,7 +6,6 @@ import (
 	"time"
 	"xiacutai-server/internal/component/errs"
 	"xiacutai-server/internal/component/modelcall/easyserver"
-	"xiacutai-server/internal/domain"
 )
 
 func RecognizeSoundPromptText(audioPath string) (string, error) {
@@ -48,7 +47,7 @@ func RecognizeSoundPromptText(audioPath string) (string, error) {
 }
 
 func findAsrServerKey() (string, error) {
-	models, err := Model.ModelList(domain.FunctionSoundAsr)
+	models, err := Model.ModelList("asr")
 	if err != nil {
 		return "", err
 	}

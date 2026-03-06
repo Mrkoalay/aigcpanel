@@ -15,6 +15,7 @@ var RegistryFile string
 var SQLiteFile string
 var StorageDir string
 var JsonDir string
+var LogDir string
 
 func InitDirs() {
 
@@ -31,6 +32,7 @@ func InitDirs() {
 	SQLiteFile = filepath.Join(DataDir, "xiacutai.db")
 	StorageDir = filepath.Join(DataDir, "storage")
 	JsonDir = filepath.Join(DataDir, "json")
+	LogDir = filepath.Join(DataDir, "logs")
 
 	// ===== 创建目录 =====
 	mustMkdir(DataDir)

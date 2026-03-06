@@ -6,33 +6,28 @@ import (
 	"strconv"
 	"strings"
 	"xiacutai-server/internal/component/errs"
-	"xiacutai-server/internal/component/log"
 	"xiacutai-server/internal/domain"
 	"xiacutai-server/internal/service"
 	"xiacutai-server/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
-const BizSoundPrompt = "SoundPrompt"
-
-type storageCreateRequest struct {
+type SoundMediaCreateRequest struct {
 	Title      string `json:"title"`
 	FilePath   string `json:"filePath"`
 	PromptText string `json:"promptText"`
 }
-type storageListRequest struct {
-	Biz  string `form:"biz"`
-	Page int    `form:"page"`
-	Size int    `form:"size"`
+type SoundMediaListRequest struct {
+	Page int `form:"page"`
+	Size int `form:"size"`
 }
-type storageUpdateRequest struct {
+type SoundMediaUpdateRequest struct {
 	ID    int64  `json:"id"`
 	Title string `json:"title"`
 }
 
-func DataStorageGet(ctx *gin.Context) {
+func SoundMediaGet(ctx *gin.Context) {
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil || id <= 0 {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -46,14 +41,30 @@ func DataStorageGet(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, record)
 }
 
-func DataStorageList(ctx *gin.Context) {
+type SoundMediaResp struct {
+	ID        int64              `json:"ID"`
+	CreatedAt int64              `json:"CreatedAt"`
+	UpdatedAt int64              `json:"UpdatedAt"`
+	Sort      int64              `json:"Sort"`
+	Biz       string             `json:"Biz"`
+	Title     string             `json:"Title"`
+	Content   SoundPromptContent `json:"content"`
+}
+type SoundPromptContent struct {
+	AsrStatus  string `json:"asrStatus"`
+	PromptText string `json:"promptText"`
+	URL        string `json:"url"`
+}
+
+func SoundMediaList(ctx *gin.Context) {
 	var req storageListRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		Err(ctx, err)
 		return
 	}
+
 	list, err := service.DataStorage.ListStorages(service.StorageFilters{
-		Biz:  req.Biz,
+		Biz:  BizSoundPrompt,
 		Page: req.Page,
 		Size: req.Size,
 	})
@@ -61,13 +72,33 @@ func DataStorageList(ctx *gin.Context) {
 		Err(ctx, err)
 		return
 	}
+
+	var resp []SoundMediaResp
+
+	for _, item := range list {
+		var content SoundPromptContent
+		if item.Content != "" {
+			_ = json.Unmarshal([]byte(item.Content), &content)
+		}
+
+		resp = append(resp, SoundMediaResp{
+			ID:        item.ID,
+			CreatedAt: item.CreatedAt,
+			UpdatedAt: item.UpdatedAt,
+			Sort:      item.Sort,
+			Biz:       item.Biz,
+			Title:     item.Title,
+			Content:   content,
+		})
+	}
+
 	OK(ctx, gin.H{
-		"data": list,
+		"data": resp,
 	})
 }
 
-func DataStorageSoundCreate(ctx *gin.Context) {
-	var req storageCreateRequest
+func SoundMediaCreate(ctx *gin.Context) {
+	var req SoundMediaCreateRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		Err(ctx, err)
 		return
@@ -86,7 +117,7 @@ func DataStorageSoundCreate(ctx *gin.Context) {
 		return
 	}
 	record := domain.DataStorageModel{
-		Biz:     "SoundPrompt",
+		Biz:     BizSoundPrompt,
 		Title:   req.Title,
 		Content: string(contentRaw),
 	}
@@ -103,47 +134,7 @@ func DataStorageSoundCreate(ctx *gin.Context) {
 	})
 }
 
-func buildSoundPromptStorageContent(url, promptText, asrError string) ([]byte, error) {
-	contentMap := map[string]any{
-		"url":        url,
-		"promptText": promptText,
-	}
-	if asrError != "" {
-		contentMap["asrStatus"] = "failed"
-		contentMap["asrError"] = asrError
-	} else if promptText == "" {
-		contentMap["asrStatus"] = "loading"
-	} else {
-		contentMap["asrStatus"] = "success"
-	}
-	return json.Marshal(contentMap)
-}
-
-func recognizeAndUpdateSoundPrompt(id int64, audioPath string) {
-	promptText, err := service.RecognizeSoundPromptText(audioPath)
-	if err != nil {
-		contentRaw, marshalErr := buildSoundPromptStorageContent(audioPath, "", err.Error())
-		if marshalErr != nil {
-			log.Error("音频ASR失败后更新状态时序列化内容失败", zap.Int64("id", id), zap.Error(marshalErr))
-			return
-		}
-		if _, updateErr := service.DataStorage.UpdateStorage(id, map[string]any{"content": string(contentRaw)}); updateErr != nil {
-			log.Error("音频ASR失败后更新存储记录失败", zap.Int64("id", id), zap.Error(updateErr), zap.Error(err))
-		}
-		return
-	}
-
-	contentRaw, err := buildSoundPromptStorageContent(audioPath, promptText, "")
-	if err != nil {
-		log.Error("音频ASR成功后序列化内容失败", zap.Int64("id", id), zap.Error(err))
-		return
-	}
-	if _, err = service.DataStorage.UpdateStorage(id, map[string]any{"content": string(contentRaw)}); err != nil {
-		log.Error("音频ASR成功后更新存储记录失败", zap.Int64("id", id), zap.Error(err))
-	}
-}
-
-func DataStorageUpdate(ctx *gin.Context) {
+func SoundMediaUpdate(ctx *gin.Context) {
 	var req storageUpdateRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		Err(ctx, err)
@@ -170,7 +161,7 @@ func DataStorageUpdate(ctx *gin.Context) {
 	})
 }
 
-func DataStorageDelete(ctx *gin.Context) {
+func SoundMediaDelete(ctx *gin.Context) {
 	var req taskOperateRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		Err(ctx, err)
@@ -199,7 +190,7 @@ func DataStorageDelete(ctx *gin.Context) {
 	})
 }
 
-func DataStorageClear(ctx *gin.Context) {
+func SoundMediaClear(ctx *gin.Context) {
 	biz := strings.TrimSpace(ctx.Query("biz"))
 	if biz == "" {
 		Err(ctx, errs.ParamError)
