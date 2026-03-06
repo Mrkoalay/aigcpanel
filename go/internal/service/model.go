@@ -137,17 +137,8 @@ func (s *model) ModelList(functionName string) ([]domain.LocalModelConfigInfo, e
 
 	for _, r := range reg.Records {
 
-		configPath := filepath.Join(r.LocalPath, "config.json")
-
-		buf, err := os.ReadFile(configPath)
-		if err != nil {
-			log.Warn("模型配置丢失", zap.String("path", configPath))
-			continue
-		}
-
-		var cfg map[string]any
-		if err := json.Unmarshal(buf, &cfg); err != nil {
-			log.Warn("模型配置损坏", zap.String("path", configPath))
+		cfg, ok := resolveModelConfig(r)
+		if !ok {
 			continue
 		}
 
@@ -295,20 +286,34 @@ func (s *model) Get(modelKey string) (*domain.LocalModelConfigInfo, error) {
 	}
 
 	record := reg.Records[index]
-	configPath := filepath.Join(record.LocalPath, "config.json")
-
-	buf, err := os.ReadFile(configPath)
-	if err != nil {
-		return localModelConfigInfo, errs.New("模型配置丢失")
-	}
-	var cfg map[string]any
-	if err := json.Unmarshal(buf, &cfg); err != nil {
+	cfg, ok := resolveModelConfig(record)
+	if !ok {
 		return localModelConfigInfo, errs.New("模型配置损坏")
-
 	}
 	modelConfigInfo := parseConfigToInfo(cfg, record.LocalPath)
 
 	return &modelConfigInfo, nil
+}
+
+func resolveModelConfig(r ModelRecord) (map[string]any, bool) {
+	if len(r.Config) > 0 {
+		return r.Config, true
+	}
+
+	configPath := filepath.Join(r.LocalPath, "config.json")
+	buf, err := os.ReadFile(configPath)
+	if err != nil {
+		log.Warn("模型配置丢失", zap.String("path", configPath))
+		return nil, false
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal(buf, &cfg); err != nil {
+		log.Warn("模型配置损坏", zap.String("path", configPath))
+		return nil, false
+	}
+
+	return cfg, true
 }
 func (s *model) GetByDB(modelKey string) (*domain.LocalModelRegistryModel, error) {
 	LocalModelRegistryModel := &domain.LocalModelRegistryModel{}
