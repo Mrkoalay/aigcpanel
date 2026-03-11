@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,21 +40,6 @@ func SoundMediaGet(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, record)
 }
 
-type SoundMediaResp struct {
-	ID        int64              `json:"ID"`
-	CreatedAt int64              `json:"CreatedAt"`
-	UpdatedAt int64              `json:"UpdatedAt"`
-	Sort      int64              `json:"Sort"`
-	Biz       string             `json:"Biz"`
-	Title     string             `json:"Title"`
-	Content   SoundPromptContent `json:"content"`
-}
-type SoundPromptContent struct {
-	AsrStatus  string `json:"asrStatus"`
-	PromptText string `json:"promptText"`
-	URL        string `json:"url"`
-}
-
 func SoundMediaList(ctx *gin.Context) {
 	var req storageListRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -73,27 +57,8 @@ func SoundMediaList(ctx *gin.Context) {
 		return
 	}
 
-	var resp []SoundMediaResp
-
-	for _, item := range list {
-		var content SoundPromptContent
-		if item.Content != "" {
-			_ = json.Unmarshal([]byte(item.Content), &content)
-		}
-
-		resp = append(resp, SoundMediaResp{
-			ID:        item.ID,
-			CreatedAt: item.CreatedAt,
-			UpdatedAt: item.UpdatedAt,
-			Sort:      item.Sort,
-			Biz:       item.Biz,
-			Title:     item.Title,
-			Content:   content,
-		})
-	}
-
 	OK(ctx, gin.H{
-		"data": resp,
+		"data": list,
 	})
 }
 

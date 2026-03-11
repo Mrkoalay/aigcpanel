@@ -122,43 +122,118 @@ func (s *model) ModelAdd(configPath string) (domain.LocalModelConfigInfo, error)
 	return info, nil
 }
 
-////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////
 // ModelList
-////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////
+func convertDBToInfo(row domain.LocalModelRegistryModel) (domain.LocalModelConfigInfo, error) {
+	info := domain.LocalModelConfigInfo{
+		Key:     row.Key,
+		Type:    firstNonEmpty(row.Type, "LOCAL_DIR"),
+		Name:    row.Name,
+		Title:   row.Title,
+		Version: row.Version,
+		Path:    row.LocalPath,
+		Status:  row.Status, // 直接用 DB，不写死
+	}
+
+	if strings.TrimSpace(info.Status) == "" {
+		info.Status = "3"
+	}
+
+	// functions
+	if strings.TrimSpace(row.Functions) != "" {
+		if err := json.Unmarshal([]byte(row.Functions), &info.Functions); err != nil {
+			return domain.LocalModelConfigInfo{}, err
+		}
+	} else {
+		info.Functions = make([]string, 0)
+	}
+
+	// settings
+	if strings.TrimSpace(row.Settings) != "" {
+		if err := json.Unmarshal([]byte(row.Settings), &info.Settings); err != nil {
+			return domain.LocalModelConfigInfo{}, err
+		}
+	} else {
+		info.Settings = make([]any, 0)
+	}
+
+	// setting
+	if strings.TrimSpace(row.Setting) != "" {
+		if err := json.Unmarshal([]byte(row.Setting), &info.Setting); err != nil {
+			return domain.LocalModelConfigInfo{}, err
+		}
+	} else {
+		info.Setting = map[string]any{}
+	}
+
+	// config
+	if strings.TrimSpace(row.Config) != "" {
+		if err := json.Unmarshal([]byte(row.Config), &info.Config); err != nil {
+			return domain.LocalModelConfigInfo{}, err
+		}
+	} else {
+		info.Config = map[string]any{}
+	}
+
+	// 这些字段如果 DB 表里没拆列，只能从 DB 里的 config JSON 补
+	toString := func(v any) string {
+		if s, ok := v.(string); ok {
+			return s
+		}
+		return ""
+	}
+
+	info.ServerRequire = "*"
+	if info.Config != nil {
+		info.ServerRequire = firstNonEmpty(toString(info.Config["serverRequire"]), "*")
+		info.Description = toString(info.Config["description"])
+		info.DeviceDescription = toString(info.Config["deviceDescription"])
+		info.PlatformName = toString(info.Config["platformName"])
+		info.PlatformArch = toString(info.Config["platformArch"])
+		info.Entry = toString(info.Config["entry"])
+	}
+
+	return info, nil
+}
 
 func (s *model) ModelList(functionName string) ([]domain.LocalModelConfigInfo, error) {
-
-	reg, err := loadRegistry()
-	if err != nil {
+	rows := make([]domain.LocalModelRegistryModel, 0)
+	if err := sqllite.GetSession().
+		Order("id ASC").
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
-	list := make([]domain.LocalModelConfigInfo, 0)
+	list := make([]domain.LocalModelConfigInfo, 0, len(rows))
 
-	for _, r := range reg.Records {
-
-		cfg, ok := resolveModelConfig(r)
-		if !ok {
+	for _, row := range rows {
+		info, err := convertDBToInfo(row)
+		if err != nil {
+			log.Warn("模型记录解析失败",
+				zap.String("key", row.Key),
+				zap.Error(err),
+			)
 			continue
 		}
 
-		modelConfigInfo := parseConfigToInfo(cfg, r.LocalPath)
-		functions := modelConfigInfo.Functions
 		if functionName != "" {
-			if functions != nil && utils.Contains(functions, functionName) {
-				list = append(list, modelConfigInfo)
+			if len(info.Functions) > 0 && utils.Contains(info.Functions, functionName) {
+				list = append(list, info)
 			}
 			continue
 		}
 
-		list = append(list, modelConfigInfo)
+		list = append(list, info)
 	}
 
-	log.Info("返回模型列表", zap.Int("count", len(list)))
+	log.Info("返回模型列表",
+		zap.String("functionName", functionName),
+		zap.Int("count", len(list)),
+	)
 
 	return list, nil
 }
-
 func (s *model) ModelUpdateSetting(name, version string, newSetting map[string]any) error {
 
 	key := name + "|" + version
@@ -264,37 +339,31 @@ func (s *model) ModelDelete(name string, version string) error {
 	return saveRegistry(reg)
 }
 func (s *model) Get(modelKey string) (*domain.LocalModelConfigInfo, error) {
-	localModelConfigInfo := &domain.LocalModelConfigInfo{}
-	reg, err := loadRegistry()
-	if err != nil {
-		return localModelConfigInfo, err
-	}
-
-	index := -1
-
-	for i, r := range reg.Records {
-		if r.Key == modelKey {
-			index = i
-
-			break
+	row := &domain.LocalModelRegistryModel{}
+	if err := sqllite.GetSession().
+		Where("key = ?", modelKey).
+		First(row).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			log.Warn("模型不存在", zap.String("key", modelKey))
+			return &domain.LocalModelConfigInfo{}, errs.New("模型不存在")
 		}
+		return &domain.LocalModelConfigInfo{}, err
 	}
 
-	if index == -1 {
-		log.Warn("模型不存在", zap.String("key", modelKey))
-		return localModelConfigInfo, errs.New("模型不存在")
+	record, err := convertDBToRecord(*row)
+	if err != nil {
+		return &domain.LocalModelConfigInfo{}, err
 	}
 
-	record := reg.Records[index]
-	cfg, ok := resolveModelConfig(record)
-	if !ok {
-		return localModelConfigInfo, errs.New("模型配置损坏")
+	if len(record.Config) == 0 {
+		return &domain.LocalModelConfigInfo{}, errs.New("模型配置损坏")
 	}
-	modelConfigInfo := parseConfigToInfo(cfg, record.LocalPath)
+
+	modelConfigInfo := parseConfigToInfo(record.Config, record.LocalPath)
+	modelConfigInfo.Status = firstNonEmpty(record.Status, "3")
 
 	return &modelConfigInfo, nil
 }
-
 func resolveModelConfig(r ModelRecord) (map[string]any, bool) {
 	if len(r.Config) > 0 {
 		return r.Config, true
@@ -423,6 +492,7 @@ func convertDBToRecord(row domain.LocalModelRegistryModel) (ModelRecord, error) 
 		Key:       row.Key,
 		Name:      row.Name,
 		Title:     row.Title,
+		Status:    row.Status,
 		Version:   row.Version,
 		Type:      row.Type,
 		AutoStart: row.AutoStart,

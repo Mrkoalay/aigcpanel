@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"time"
 	"xiacutai-server/internal/component/sqllite"
 	"xiacutai-server/internal/domain"
@@ -41,7 +42,22 @@ type StorageFilters struct {
 	Size int `form:"size"`
 }
 
-func (s *storageService) ListStorages(req StorageFilters) ([]domain.DataStorageModel, error) {
+type SoundMediaResp struct {
+	ID        int64              `json:"ID"`
+	CreatedAt int64              `json:"CreatedAt"`
+	UpdatedAt int64              `json:"UpdatedAt"`
+	Sort      int64              `json:"Sort"`
+	Biz       string             `json:"Biz"`
+	Title     string             `json:"Title"`
+	Content   SoundPromptContent `json:"content"`
+}
+type SoundPromptContent struct {
+	AsrStatus  string `json:"asrStatus"`
+	PromptText string `json:"promptText"`
+	URL        string `json:"url"`
+}
+
+func (s *storageService) ListStorages(req StorageFilters) ([]SoundMediaResp, error) {
 	session := sqllite.GetSession()
 	query := session.Model(&domain.DataStorageModel{})
 	if req.Biz != "" {
@@ -56,7 +72,27 @@ func (s *storageService) ListStorages(req StorageFilters) ([]domain.DataStorageM
 	if err := query.Order("id DESC").Find(&models).Error; err != nil {
 		return nil, err
 	}
-	return models, nil
+
+	var resp []SoundMediaResp
+
+	for _, item := range models {
+		var content SoundPromptContent
+		if item.Content != "" {
+			_ = json.Unmarshal([]byte(item.Content), &content)
+		}
+
+		resp = append(resp, SoundMediaResp{
+			ID:        item.ID,
+			CreatedAt: item.CreatedAt,
+			UpdatedAt: item.UpdatedAt,
+			Sort:      item.Sort,
+			Biz:       item.Biz,
+			Title:     item.Title,
+			Content:   content,
+		})
+	}
+
+	return resp, nil
 }
 
 func (s *storageService) UpdateStorage(id int64, updates map[string]any) (domain.DataStorageModel, error) {
